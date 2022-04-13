@@ -41,4 +41,30 @@ async fn main() {
         .await.expect("failed to connect with url");
     println!("websocket handshake successfully completed!");
 
+    let (write, read) = websocket_stream.split();
+
+    let req_message = json!({
+        "action": "want",
+        "data": ["blocks", "stats", "mempool-blocks", "live-2h-chart"]
+    });
+    let req_message_str = serde_json::ser::to_string(&req_message).unwrap();
+
+    let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
+    let stdin_message = stdin_tx.unbounded_send(Message::text(req_message_str)).unwrap(); 
+    tokio::spawn(async move {
+        stdin_message
+    });
+
+    let message_to_websocket = stdin_rx.map(Ok).forward(write);
+    let ws_to_stdout = {
+        read.for_each(|message| async {
+            let str_data = message.unwrap().into_text().unwrap();
+            let obj: serde_json::Value = serde_json::from_str(&str_data).unwrap();
+            println!("{}", serde_json::to_string_pretty(&obj).unwrap());
+        })
+    };
+
+    pin_mut!(message_to_websocket, ws_to_stdout);
+    future::select(message_to_websocket, ws_to_stdout).await;
+
 }
