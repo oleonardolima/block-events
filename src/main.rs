@@ -24,10 +24,6 @@ struct Cli {
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
-    // println!("network: {:?}", cli.network);
-    // println!("blocks: {:?}", cli.blocks);
-    // println!("mempool_blocks: {:?}", cli.mempool_blocks);
-    // println!("explorer: {:?}", cli.explorer);
 
     let connect_address;
     if cli.network == "testnet" {
