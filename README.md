@@ -1,0 +1,2 @@
+export DEFAULT_NETWORK=testnet
+export BLOCK_EXPLORER=mempool.space
