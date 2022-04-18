@@ -1,7 +1,8 @@
 use clap::Parser;
-use futures_util::{future, pin_mut, StreamExt};
+use futures_util::{SinkExt, StreamExt};
+use anyhow::anyhow;
 use serde_json::json;
-use std::env;
+use std::{env, time::Duration};
 use tokio_tungstenite::{connect_async_tls_with_config, tungstenite::protocol::Message};
 
 #[derive(Parser)]
@@ -11,56 +12,78 @@ use tokio_tungstenite::{connect_async_tls_with_config, tungstenite::protocol::Me
 #[clap(about = "A work in progress CLI block explorer to be used with BDK, consuming data from mempool.space websocket.\n
                 This an initial competency test for Summer of Bitcoin 2022", long_about = None)]
 struct Cli {
-    #[clap(default_value_t = String::from(env::var("DEFAULT_NETWORK").unwrap()), short, long)]
-    network: String,
+    #[clap(long)]
+    no_blocks: bool,
+    #[clap(long)]
+    no_mempool_blocks: bool,
     #[clap(short, long)]
-    blocks: bool,
-    #[clap(short, long)]
-    mempool_blocks: bool,
-    #[clap(default_value_t = String::from(env::var("BLOCK_EXPLORER").unwrap()), short, long)]
-    explorer: String,
+    endpoint: Option<String>,
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let connect_address;
-    if cli.network == "testnet" {
-        connect_address = format!("wss://{}/testnet/api/v1/ws", cli.explorer);
-    } else {
-        connect_address = format!("wss://{}/api/v1/ws", cli.explorer);
-    }
+    let connect_address = format!(
+        "wss://{}/v1/ws",
+        cli.endpoint
+            .or(env::var("MEMPOOL_ENDPOINT").ok())
+            .unwrap_or("mempool.space/api".to_string())
+    );
 
     let connect_url = url::Url::parse(&connect_address).unwrap();
-    let (websocket_stream, _ws_res) = connect_async_tls_with_config(connect_url, None, None)
-        .await.expect("failed to connect with url");
+    let (mut websocket_stream, _ws_res) = connect_async_tls_with_config(connect_url, None, None)
+        .await
+        .expect("failed to connect with url");
     println!("websocket handshake successfully completed!");
 
-    let (write, read) = websocket_stream.split();
+    let mut data = vec![];
+    if !cli.no_mempool_blocks {
+        data.push("mempool-blocks");
+    }
+    if !cli.no_blocks {
+        data.push("blocks");
+    }
 
     let req_message = json!({
         "action": "want",
-        "data": ["blocks", "stats", "mempool-blocks", "live-2h-chart"]
+        "data": data
     });
     let req_message_str = serde_json::ser::to_string(&req_message).unwrap();
 
-    let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
-    let stdin_message = stdin_tx.unbounded_send(Message::text(req_message_str)).unwrap(); 
-    tokio::spawn(async move {
-        stdin_message
-    });
+    if let Err(_) = websocket_stream.send(Message::text(req_message_str)).await {
+        return Err(anyhow!("Failed to send first message to websocket"));
+    }
 
-    let message_to_websocket = stdin_rx.map(Ok).forward(write);
-    let ws_to_stdout = {
-        read.for_each(|message| async {
-            let str_data = message.unwrap().into_text().unwrap();
-            let obj: serde_json::Value = serde_json::from_str(&str_data).unwrap();
-            println!("{}", serde_json::to_string_pretty(&obj).unwrap());
-        })
-    };
+    // need to ping every so often to keep websocket alive
+    let mut pinger = tokio::time::interval(Duration::from_secs(60));
 
-    pin_mut!(message_to_websocket, ws_to_stdout);
-    future::select(message_to_websocket, ws_to_stdout).await;
+    loop {
+        tokio::select! {
+            message = websocket_stream.next() => {
+                if let Some(message) = message {
+                    match message? {
+                        Message::Text(text) => {
+                            let obj: serde_json::Value = serde_json::from_str(&text).unwrap();
+                            println!("{}", serde_json::to_string_pretty(&obj).unwrap());
+                        },
+                        Message::Close(_) => {
+                            eprintln!("websocket closing gracefully");
+                            break;
+                        },
+                        Message::Binary(_) => {
+                            eprintln!("unexpected binary message");
+                            break;
+                        },
+                        _ => { /*ignore*/ }
+                    }
+                }
+            }
+            _ = pinger.tick() => {
+                websocket_stream.send(Message::Ping(vec![])).await.unwrap()
+            }
+        }
+    }
 
+    Ok(())
 }
