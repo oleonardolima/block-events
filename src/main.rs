@@ -1,9 +1,10 @@
-use clap::Parser;
-use futures_util::{SinkExt, StreamExt};
 use anyhow::anyhow;
-use serde_json::json;
+use clap::{ArgGroup, Parser};
+use futures_util::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
 use std::{env, time::Duration};
 use tokio_tungstenite::{connect_async_tls_with_config, tungstenite::protocol::Message};
+use either::*;
 
 #[derive(Parser)]
 #[clap(name = "CLI block explorer with mempool.space websocket - WIP")]
@@ -11,18 +12,47 @@ use tokio_tungstenite::{connect_async_tls_with_config, tungstenite::protocol::Me
 #[clap(version = "0.1")]
 #[clap(about = "A work in progress CLI block explorer to be used with BDK, consuming data from mempool.space websocket.\n
                 This an initial competency test for Summer of Bitcoin 2022", long_about = None)]
+#[clap(group(ArgGroup::new("flags")
+                .required(true)
+                .args(&["blocks-data", "track-address"]),
+            ))]
 struct Cli {
-    #[clap(long)]
+    #[clap(short, long, group = "blocks")]
+    blocks_data: bool,
+
+    #[clap(short, long, value_name = "ADDRESS")]
+    track_address: String,
+
+    #[clap(long, requires = "blocks")]
     no_blocks: bool,
-    #[clap(long)]
+ 
+    #[clap(long, requires = "blocks")]
     no_mempool_blocks: bool,
+ 
     #[clap(short, long)]
     endpoint: Option<String>,
 }
 
+#[allow(dead_code)]
+#[derive(Serialize, Deserialize)]
+struct BlockDataMessage {
+    action: String,
+    data: Vec<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Serialize, Deserialize)]
+struct TrackAddressMessage {
+    track_address: String,
+}
+
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+
+    let req_message = serde_json::to_string(&build_request_message(&cli)).unwrap();
+    println!("[req-message] {:?}", req_message);
 
     let connect_address = format!(
         "wss://{}/v1/ws",
@@ -37,21 +67,7 @@ async fn main() -> anyhow::Result<()> {
         .expect("failed to connect with url");
     println!("websocket handshake successfully completed!");
 
-    let mut data = vec![];
-    if !cli.no_mempool_blocks {
-        data.push("mempool-blocks");
-    }
-    if !cli.no_blocks {
-        data.push("blocks");
-    }
-
-    let req_message = json!({
-        "action": "want",
-        "data": data
-    });
-    let req_message_str = serde_json::ser::to_string(&req_message).unwrap();
-
-    if let Err(_) = websocket_stream.send(Message::text(req_message_str)).await {
+    if let Err(_) = websocket_stream.send(Message::text(req_message)).await {
         return Err(anyhow!("Failed to send first message to websocket"));
     }
 
@@ -86,4 +102,26 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn build_request_message(cli: &Cli) -> Either<BlockDataMessage, TrackAddressMessage>{
+
+    if cli.blocks_data {
+        let mut data = vec![];
+
+        if !cli.no_mempool_blocks {
+            data.push(String::from("mempool-blocks"));
+        }
+
+        if !cli.no_blocks {
+            data.push(String::from("blocks"));
+        }
+
+        return either::Left(BlockDataMessage {action: String::from("want"), data: data});
+
+    }
+    if !cli.track_address.is_empty() {
+        println!("{}", &cli.track_address);
+        return either::Right(TrackAddressMessage {track_address: String::from(&cli.track_address)});
+    }
 }
