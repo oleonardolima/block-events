@@ -16,6 +16,7 @@ use either::*;
                 .required(true)
                 .args(&["blocks-data", "track-address"]),
             ))]
+
 struct Cli {
     #[clap(short, long, group = "blocks")]
     blocks_data: bool,
@@ -34,14 +35,14 @@ struct Cli {
 }
 
 #[allow(dead_code)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct BlockDataMessage {
     action: String,
     data: Vec<String>,
 }
 
 #[allow(dead_code)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct TrackAddressMessage {
     track_address: String,
 }
@@ -51,7 +52,14 @@ struct TrackAddressMessage {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let req_message = serde_json::to_string(&build_request_message(&cli)).unwrap();
+    let req_message;
+    let message = build_request_message(&cli);
+    if message.is_right() {
+        req_message = serde_json::to_string(&build_request_message(&cli).unwrap_right()).unwrap();
+    } else {
+        req_message = serde_json::to_string(&build_request_message(&cli).unwrap_left()).unwrap();
+    }
+
     println!("[req-message] {:?}", req_message);
 
     let connect_address = format!(
@@ -118,10 +126,7 @@ fn build_request_message(cli: &Cli) -> Either<BlockDataMessage, TrackAddressMess
         }
 
         return either::Left(BlockDataMessage {action: String::from("want"), data: data});
-
-    }
-    if !cli.track_address.is_empty() {
-        println!("{}", &cli.track_address);
+    } else {
         return either::Right(TrackAddressMessage {track_address: String::from(&cli.track_address)});
     }
 }
