@@ -52,7 +52,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "futures-channel",
  "futures-util",
  "log",
  "serde_json",
@@ -198,15 +197,6 @@ checksum = "5fc25a87fa4fd2094bffb06925852034d90a17f0d1e05197d4956d3555752191"
 dependencies = [
  "matches",
  "percent-encoding",
-]
-
-[[package]]
-name = "futures-channel"
-version = "0.3.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3083ce4b914124575708913bca19bfe887522d6e2e6d0952943f5eac4a74010"
-dependencies = [
- "futures-core",
 ]
 
 [[package]]
