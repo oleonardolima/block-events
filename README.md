@@ -1,18 +1,44 @@
-# A CLI block explorer for mempool.space websocket
+# A terminal block explorer for mempool.space websocket
 
-This is an initial approach in building a cli interface for consuming and streaming blocks, transactions and mempool statistics from [mempool.space websocket API](https://mempool.space/docs/api/websocket).
+A terminal block explorer exposing the features available on mempool.space websocket API [mempool.space websocket API](https://mempool.space/docs/api/websocket).
 
-## Executing - WIP
+Currently available features are:
+- All data feed from mempool.space for: blocks, mempool-blocks, live-2h-chart, and stats.
+- Subscription for address related data: track-address.
 
-And you can execute the code with the following command:
+## How to use:
 
-``` sh
-cargo run
-```
-
-Or for testnet:
+To use this CLI you must have rust and cargo installed in your computer, you can check it wih:
 
 ``` sh
-cargo run -- --endpoint mempool.space/testnet/api
+rustc --version
 ```
 
+``` sh
+cargo --version
+```
+
+If you have cargo and rust installed, you can run the following commands:
+
+``` sh
+# mainnet connection is default
+cargo run -- track-address <your-btc-address>
+
+# to use testnet
+cargo run -- track-address <your-btc-address> --endpoint mempool.space/testnet/api
+```
+
+``` sh
+# all feed [blocks, mempool-blocks, live-2h-chart, and stats] for mainnet:
+cargo run -- blocks-data
+
+# or all feed [blocks, mempool-blocks, live-2h-chart, and stats] for testnet:
+cargo run -- --endpoint mempool.space/testnet/api blocks-data
+```
+
+## Compiling and using:
+To compile and use it as a command in terminal with no need of cargo, you can use the following command:
+
+``` sh
+cargo install --path .
+```
