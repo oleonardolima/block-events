@@ -1,31 +1,39 @@
 # A terminal block explorer for mempool.space websocket
 
-A terminal block explorer exposing the features available on mempool.space websocket API [mempool.space websocket API](https://mempool.space/docs/api/websocket).
+A terminal block explorer exposing the features available on [mempool.space websocket API](https://mempool.space/docs/api/websocket).
 
 Currently available features are:
 - All data feed from mempool.space for: blocks, mempool-blocks, live-2h-chart, and stats.
 - Subscription for address related data: track-address.
 
-## How to use:
+<br>
 
-To use this CLI you must have rust and cargo installed in your computer, you can check it wih:
+## Requirements:
+
+To use this CLI you must have rust and cargo installed in your computer, you can check it with:
 
 ``` sh
+# check rust version, it should return its version if installed
 rustc --version
-```
-
-``` sh
+# check cargo version, it should return its version if installed
 cargo --version
 ```
+
+If you do not have it installed, you can follow this tutorial from [The Rust Programming Language book](https://doc.rust-lang.org/book/ch01-01-installation.html)
+
+
+<br>
+
+## How to use:
 
 If you have cargo and rust installed, you can run the following commands:
 
 ``` sh
 # mainnet connection is default
-cargo run -- track-address <your-btc-address>
+cargo run -- track-address -a <your-btc-address>
 
 # to use testnet
-cargo run -- track-address <your-btc-address> --endpoint mempool.space/testnet/api
+cargo run --  --endpoint mempool.space/testnet/api track-address -a <your-btc-address>
 ```
 
 ``` sh
