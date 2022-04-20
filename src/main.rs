@@ -1,6 +1,5 @@
 use anyhow::anyhow;
 use clap::{Subcommand, Parser};
-use either::{Either};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::{env, time::Duration};
@@ -59,13 +58,7 @@ struct TrackAddressMessage {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let req_message;
-    let message = build_request_message(&cli);
-    if message.is_right() {
-        req_message = serde_json::to_string(&build_request_message(&cli).unwrap_right()).unwrap();
-    } else {
-        req_message = serde_json::to_string(&build_request_message(&cli).unwrap_left()).unwrap();
-    }
+    let req_message = build_request_message(&cli);
 
     let connect_address = format!(
         "wss://{}/v1/ws",
@@ -117,11 +110,11 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_request_message(cli: &Cli) -> Either<BlockDataMessage, TrackAddressMessage>{
+fn build_request_message(cli: &Cli) -> String {
 
     match &cli.command {
         Commands::TrackAddress { address } => {
-            return either::Right(TrackAddressMessage {track_address: String::from(address)});
+            return serde_json::to_string(&(TrackAddressMessage {track_address: String::from(address)})).unwrap();
         }
         Commands::BlocksData { no_blocks, no_mempool_blocks} => {
             let mut data = vec![];
@@ -134,7 +127,7 @@ fn build_request_message(cli: &Cli) -> Either<BlockDataMessage, TrackAddressMess
                 data.push(String::from("blocks"));
             }
         
-            return either::Left(BlockDataMessage {action: String::from("want"), data: data});
+            return serde_json::to_string(&(BlockDataMessage {action: String::from("want"), data: data})).unwrap();
         }
     }
 }
