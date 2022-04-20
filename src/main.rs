@@ -1,10 +1,10 @@
 use anyhow::anyhow;
-use clap::{ArgGroup, Parser};
+use clap::{Subcommand, Parser};
+use either::{Either};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::{env, time::Duration};
 use tokio_tungstenite::{connect_async_tls_with_config, tungstenite::protocol::Message};
-use either::*;
 
 #[derive(Parser)]
 #[clap(name = "CLI block explorer with mempool.space websocket - WIP")]
@@ -12,26 +12,33 @@ use either::*;
 #[clap(version = "0.1")]
 #[clap(about = "A work in progress CLI block explorer to be used with BDK, consuming data from mempool.space websocket.\n
                 This an initial competency test for Summer of Bitcoin 2022", long_about = None)]
-#[clap(group(ArgGroup::new("flags")
-                .required(true)
-                .args(&["blocks-data", "track-address"]),
-            ))]
 
 struct Cli {
-    #[clap(short, long, group = "blocks")]
-    blocks_data: bool,
+    #[clap(subcommand)]
+    command: Commands,
 
-    #[clap(short, long, value_name = "ADDRESS")]
-    track_address: String,
-
-    #[clap(long, requires = "blocks")]
-    no_blocks: bool,
- 
-    #[clap(long, requires = "blocks")]
-    no_mempool_blocks: bool,
- 
     #[clap(short, long)]
     endpoint: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    // track address
+    TrackAddress {
+        // address to track
+        #[clap(short, long)]
+        address: String,
+    },
+    // fetch all new blocks
+    BlocksData {
+        // remove blocks subscription
+        #[clap(long)]
+        no_blocks: bool,
+    
+        // remove mempool blocks subscription
+        #[clap(long)]
+        no_mempool_blocks: bool,
+    },
 }
 
 #[allow(dead_code)]
@@ -59,8 +66,6 @@ async fn main() -> anyhow::Result<()> {
     } else {
         req_message = serde_json::to_string(&build_request_message(&cli).unwrap_left()).unwrap();
     }
-
-    println!("[req-message] {:?}", req_message);
 
     let connect_address = format!(
         "wss://{}/v1/ws",
@@ -114,19 +119,22 @@ async fn main() -> anyhow::Result<()> {
 
 fn build_request_message(cli: &Cli) -> Either<BlockDataMessage, TrackAddressMessage>{
 
-    if cli.blocks_data {
-        let mut data = vec![];
-
-        if !cli.no_mempool_blocks {
-            data.push(String::from("mempool-blocks"));
+    match &cli.command {
+        Commands::TrackAddress { address } => {
+            return either::Right(TrackAddressMessage {track_address: String::from(address)});
         }
-
-        if !cli.no_blocks {
-            data.push(String::from("blocks"));
+        Commands::BlocksData { no_blocks, no_mempool_blocks} => {
+            let mut data = vec![];
+        
+            if !no_mempool_blocks {
+                data.push(String::from("mempool-blocks"));
+            }
+        
+            if !no_blocks {
+                data.push(String::from("blocks"));
+            }
+        
+            return either::Left(BlockDataMessage {action: String::from("want"), data: data});
         }
-
-        return either::Left(BlockDataMessage {action: String::from("want"), data: data});
-    } else {
-        return either::Right(TrackAddressMessage {track_address: String::from(&cli.track_address)});
     }
 }
