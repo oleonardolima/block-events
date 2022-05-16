@@ -53,7 +53,6 @@ struct TrackAddressMessage {
     track_address: String,
 }
 
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
