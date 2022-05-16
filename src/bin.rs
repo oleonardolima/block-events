@@ -1,7 +1,8 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Ok};
 use clap::{Subcommand, Parser};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use url::Url;
 use std::{env, time::Duration};
 use tokio_tungstenite::{connect_async_tls_with_config, tungstenite::protocol::Message};
 
@@ -33,7 +34,7 @@ enum Commands {
         // remove blocks subscription
         #[clap(long)]
         no_blocks: bool,
-    
+
         // remove mempool blocks subscription
         #[clap(long)]
         no_mempool_blocks: bool,
@@ -54,11 +55,12 @@ struct TrackAddressMessage {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     let cli = Cli::parse();
 
     let req_message = build_request_message(&cli);
 
+    // TODO: (@leonardo.lima) extract this to a fn based on connection type (WS, HTTP, ...)
     let connect_address = format!(
         "wss://{}/v1/ws",
         cli.endpoint
@@ -67,12 +69,19 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let connect_url = url::Url::parse(&connect_address).unwrap();
-    let (mut websocket_stream, _ws_res) = connect_async_tls_with_config(connect_url, None, None)
+
+    fetch_blocks(connect_url, req_message).await.unwrap();
+
+}
+
+async fn fetch_blocks(url: Url, message: String) -> anyhow::Result<()> {
+
+    let (mut websocket_stream, _ws_res) = connect_async_tls_with_config(url, None, None)
         .await
         .expect("failed to connect with url");
     println!("websocket handshake successfully completed!");
 
-    if let Err(_) = websocket_stream.send(Message::text(req_message)).await {
+    if let Err(_) = websocket_stream.send(Message::text(message)).await {
         return Err(anyhow!("Failed to send first message to websocket"));
     }
 
@@ -107,6 +116,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+
 }
 
 fn build_request_message(cli: &Cli) -> String {
@@ -117,15 +127,15 @@ fn build_request_message(cli: &Cli) -> String {
         }
         Commands::BlocksData { no_blocks, no_mempool_blocks} => {
             let mut data = vec![];
-        
+
             if !no_mempool_blocks {
                 data.push(String::from("mempool-blocks"));
             }
-        
+
             if !no_blocks {
                 data.push(String::from("blocks"));
             }
-        
+
             return serde_json::to_string(&(BlockDataMessage {action: String::from("want"), data: data})).unwrap();
         }
     }
