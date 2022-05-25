@@ -58,12 +58,14 @@ async fn main() {
     let req_message = build_request_message(&cli);
 
     // TODO: (@leonardo.lima) extract this to a fn based on connection type (WS, HTTP, ...)
-    let connect_address = format!(
-        "wss://{}/v1/ws",
-        cli.endpoint
-            .or(env::var("MEMPOOL_ENDPOINT").ok())
-            .unwrap_or("mempool.space/api".to_string())
-    );
+    // let connect_address = format!(
+    //     "wss://{}/v1/ws",
+    //     cli.endpoint
+    //         .or(env::var("MEMPOOL_ENDPOINT").ok())
+    //         .unwrap_or("mempool.space/api".to_string())
+    // );
+
+    let connect_address = "ws://localhost/api/v1/ws";
 
     let connect_url = url::Url::parse(&connect_address).unwrap();
 
