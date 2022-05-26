@@ -1,8 +1,10 @@
 pub mod api;
 pub mod websocket;
 
-use api::{MempoolSpaceWebSocketRequestMessage};
+use anyhow;
+use api::{MempoolSpaceWebSocketRequestMessage, BlockExtended};
 use bitcoin::Network;
+use futures_core::Stream;
 use url::Url;
 
 // TODO: (@leonardo.lima)
@@ -10,7 +12,7 @@ use url::Url;
 // pub async fn track_tx(network: Network, tx: String);
 // pub async fn track_address(network: Network, address: String);
 
-pub async fn fetch_new_blocks(network: Network) {
+pub async fn fetch_new_blocks(network: Network) -> anyhow::Result<impl Stream<Item = BlockExtended>>{
   let url: Url = url::Url::parse(&build_websocket_address(network)).unwrap();
 
   let message = MempoolSpaceWebSocketRequestMessage {
@@ -18,7 +20,7 @@ pub async fn fetch_new_blocks(network: Network) {
     data: vec![String::from("blocks")],
   };
 
-  websocket::publish_message(url, message).await.unwrap();
+  websocket::publish_message(url, message).await
 }
 
 // TODO: (@leonardo.lima) refactor this fn to use constants for base url and formatting

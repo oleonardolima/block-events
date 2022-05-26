@@ -12,10 +12,12 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 anyhow = { version = "1.0" }
+async-stream = { version = "0.3.3"}
 bitcoin = { version = "0.28.1" }
 clap = { version = "3.0", features = ["derive"]}
 env_logger = { version = "0.9.0" }
-futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+futures-core = { version = "0.3" }
+futures-util = { version = "0.3" }
 log = { version = "0.4" }
 serde = { version = "1.0.117", features = ["derive"] }
 serde_json = { version = "1.0" }

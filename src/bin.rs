@@ -70,7 +70,7 @@ async fn main() {
     // TODO: (@leonardo.lima) The selected network needs to be parsed from cli args.
     let network = Network::Regtest;
 
-    fetch_data(network, data).await;
+    fetch_data(network, data).await.unwrap();
 
 }
 
