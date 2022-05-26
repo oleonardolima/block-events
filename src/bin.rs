@@ -1,7 +1,7 @@
+use bitcoin::Network;
+use block_explorer_cli::fetch_data;
 use clap::{Subcommand, Parser};
 use serde::{Deserialize, Serialize};
-use std::{env};
-use block_explorer_cli::fetch_blocks;
 
 #[derive(Parser)]
 #[clap(name = "CLI block explorer with mempool.space websocket - WIP")]
@@ -55,8 +55,6 @@ struct TrackAddressMessage {
 async fn main() {
     let cli = Cli::parse();
 
-    let req_message = build_request_message(&cli);
-
     // TODO: (@leonardo.lima) extract this to a fn based on connection type (WS, HTTP, ...)
     // let connect_address = format!(
     //     "wss://{}/v1/ws",
@@ -64,20 +62,22 @@ async fn main() {
     //         .or(env::var("MEMPOOL_ENDPOINT").ok())
     //         .unwrap_or("mempool.space/api".to_string())
     // );
+    // let connect_address = "ws://localhost/api/v1/ws";
+    // let connect_url = url::Url::parse(&connect_address).unwrap();
 
-    let connect_address = "ws://localhost/api/v1/ws";
+    let data = build_request_data(&cli);
 
-    let connect_url = url::Url::parse(&connect_address).unwrap();
+    // TODO: (@leonardo.lima) The selected network needs to be parsed from cli args.
+    let network = Network::Regtest;
 
-    fetch_blocks(connect_url, req_message).await.unwrap();
+    fetch_data(network, data).await;
 
 }
 
-fn build_request_message(cli: &Cli) -> String {
-
+fn build_request_data(cli: &Cli) -> Vec<String> {
     match &cli.command {
         Commands::TrackAddress { address } => {
-            return serde_json::to_string(&(TrackAddressMessage {track_address: String::from(address)})).unwrap();
+            return vec![serde_json::to_string(&(TrackAddressMessage {track_address: String::from(address)})).unwrap()];
         }
         Commands::BlocksData { no_blocks, no_mempool_blocks} => {
             let mut data = vec![];
@@ -90,7 +90,7 @@ fn build_request_message(cli: &Cli) -> String {
                 data.push(String::from("blocks"));
             }
 
-            return serde_json::to_string(&(BlockDataMessage {action: String::from("want"), data: data})).unwrap();
+            return data;
         }
     }
 }
