@@ -15,7 +15,7 @@ pub async fn fetch_new_blocks(network: Network) {
 
   let message = MempoolSpaceWebSocketRequestMessage {
     action: String::from("want"),
-    data: vec![String::from("block")],
+    data: vec![String::from("blocks")],
   };
 
   websocket::publish_message(url, message).await.unwrap();

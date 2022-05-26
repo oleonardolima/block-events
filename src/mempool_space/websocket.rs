@@ -12,15 +12,15 @@ pub async fn publish_message(url: Url, message: MempoolSpaceWebSocketRequestMess
         .await
         .expect(&format!("failed to connect with url: {}", &url));
 
-    log::info!("[mempool_space/websocket] websocket handshake successfully completed!");
-    log::info!("[mempool_space/websocket] handshake completed with response: {:?}", websocket_response);
+    log::info!("websocket handshake successfully completed!");
+    log::info!("handshake completed with response: {:?}", websocket_response);
 
     let item = serde_json::to_string(&message).unwrap();
     if let Err(_) = websocket_stream.send(Message::text(&item)).await {
-        log::error!("[mempool_space/websocket] failed to publish first message to websocket");
+        log::error!("failed to publish first message to websocket");
         return Err(anyhow!("failed to publish first message to websocket"));
     };
-    log::info!("[mempool_space/websocket] published message: {:#?}, successfully!", &item);
+    log::info!("published message: {:#?}, successfully!", &item);
 
     // need to ping every so often to keep the websocket connection alive
     let mut pinger = tokio::time::interval(Duration::from_secs(60));
@@ -47,7 +47,7 @@ pub async fn publish_message(url: Url, message: MempoolSpaceWebSocketRequestMess
                 }
             }
             _ = pinger.tick() => {
-                log::info!("[mempool_space/websocket] pinging to websocket to keep connection alive");
+                log::info!("pinging to websocket to keep connection alive");
                 websocket_stream.send(Message::Ping(vec![])).await.unwrap()
             }
         }
