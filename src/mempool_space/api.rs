@@ -78,3 +78,9 @@ pub struct MempoolSpaceWebSocketRequestMessage {
   pub action: String,
   pub data: Vec<String>,
 }
+
+pub enum MempoolSpaceWebSocketRequestData {
+  Blocks,
+  MempoolBlocks,
+  TrackAddress(String), // TODO:(@leonardo.lima) Update it to use bitcoin::Address instead
+}

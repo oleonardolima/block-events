@@ -1,6 +1,6 @@
 use bitcoin::Network;
-use block_explorer_cli::fetch_data;
-use clap::{Subcommand, Parser};
+use block_explorer_cli::{fetch_data_stream, MempoolSpaceWebSocketRequestData};
+use clap::{ArgGroup, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]
@@ -14,27 +14,31 @@ struct Cli {
     #[clap(subcommand)]
     command: Commands,
 
-    #[clap(short, long)]
-    endpoint: Option<String>,
+    #[clap(short, long, default_value = "testnet")]
+    network: Network,
 }
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    // track address
-    TrackAddress {
-        // address to track
+    // track address feature from mempool.space ws
+    AddressTracking {
         #[clap(short, long)]
         address: String,
     },
-    // fetch all new blocks
-    BlocksData {
-        // remove blocks subscription
-        #[clap(long)]
-        no_blocks: bool,
 
-        // remove mempool blocks subscription
+    // subscribe and fetch new blocks related data
+    #[clap(group(ArgGroup::new("data-stream")
+                    .required(true)
+                    .args(&["blocks", "mempool-blocks"])))]
+    DataStream {
+        // new blocks data only
         #[clap(long)]
-        no_mempool_blocks: bool,
+        blocks: bool,
+
+        // new mempool-blocks data only
+        #[deprecated]
+        #[clap(long)]
+        mempool_blocks: bool,
     },
 }
 
@@ -55,42 +59,23 @@ struct TrackAddressMessage {
 async fn main() {
     let cli = Cli::parse();
 
-    // TODO: (@leonardo.lima) extract this to a fn based on connection type (WS, HTTP, ...)
-    // let connect_address = format!(
-    //     "wss://{}/v1/ws",
-    //     cli.endpoint
-    //         .or(env::var("MEMPOOL_ENDPOINT").ok())
-    //         .unwrap_or("mempool.space/api".to_string())
-    // );
-    // let connect_address = "ws://localhost/api/v1/ws";
-    // let connect_url = url::Url::parse(&connect_address).unwrap();
-
     let data = build_request_data(&cli);
+    let network = cli.network;
 
-    // TODO: (@leonardo.lima) The selected network needs to be parsed from cli args.
-    let network = Network::Regtest;
-
-    fetch_data(network, data).await.unwrap();
-
+    fetch_data_stream(&network, &data).await.unwrap();
 }
 
-fn build_request_data(cli: &Cli) -> Vec<String> {
+#[allow(deprecated)]
+fn build_request_data(cli: &Cli) -> MempoolSpaceWebSocketRequestData {
     match &cli.command {
-        Commands::TrackAddress { address } => {
-            return vec![serde_json::to_string(&(TrackAddressMessage {track_address: String::from(address)})).unwrap()];
+        Commands::AddressTracking { address } => {
+            return MempoolSpaceWebSocketRequestData::TrackAddress(String::from(address));
         }
-        Commands::BlocksData { no_blocks, no_mempool_blocks} => {
-            let mut data = vec![];
-
-            if !no_mempool_blocks {
-                data.push(String::from("mempool-blocks"));
+        Commands::DataStream { blocks, .. } => {
+            if *blocks {
+                return MempoolSpaceWebSocketRequestData::Blocks
             }
-
-            if !no_blocks {
-                data.push(String::from("blocks"));
-            }
-
-            return data;
+            return MempoolSpaceWebSocketRequestData::MempoolBlocks;
         }
     }
 }

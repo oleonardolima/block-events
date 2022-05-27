@@ -2,23 +2,30 @@ extern crate env_logger;
 
 mod mempool_space;
 
-pub use mempool_space::api::MempoolSpaceWebSocketMessage;
+pub use mempool_space::api::{MempoolSpaceWebSocketMessage, MempoolSpaceWebSocketRequestData};
 use anyhow::Ok;
 use bitcoin::Network;
 use futures_util::StreamExt;
-use mempool_space::fetch_new_blocks;
+use mempool_space::{subscribe_to_new_blocks, build_websocket_request_message};
 
 use futures_util::pin_mut;
 
-pub async fn fetch_data(network: Network, _data: Vec<String>) -> anyhow::Result<()>{
+pub async fn fetch_data_stream(network: &Network, data: &MempoolSpaceWebSocketRequestData) -> anyhow::Result<()> {
     env_logger::init();
-    // TODO: (@leonardo.lima) The data needs to be parsed in order to know which fn to use from mempool.space module
 
-    let block_stream = fetch_new_blocks(network).await?;
-    pin_mut!(block_stream);
+    match data {
+        MempoolSpaceWebSocketRequestData::Blocks => {
+            let message = build_websocket_request_message(&data);
+            let block_stream = subscribe_to_new_blocks(&network, &message).await?;
+            pin_mut!(block_stream);
 
-    while let Some(block) = block_stream.next().await {
-        println!("block {:#?}", block);
-    };
+            while let Some(block) = block_stream.next().await {
+                println!("received following new block: {:#?}", block);
+            };
+        },
+        MempoolSpaceWebSocketRequestData::MempoolBlocks => { eprintln!("currently the mempool-blocks feature is no implemented yet.") },
+        MempoolSpaceWebSocketRequestData::TrackAddress(_address) => { eprintln!("currently the track-address feature is no implemented yet.") },
+    }
+
     Ok(())
 }

@@ -9,7 +9,7 @@ use url::Url;
 use async_stream::stream;
 use futures_util::stream::Stream;
 
-pub async fn publish_message(url: Url, message: MempoolSpaceWebSocketRequestMessage) -> anyhow::Result<impl Stream<Item = BlockExtended>> {
+pub async fn publish_message(url: Url, message: &MempoolSpaceWebSocketRequestMessage) -> anyhow::Result<impl Stream<Item = BlockExtended>> {
     let (mut websocket_stream, websocket_response) =
         connect_async_tls_with_config(&url, None, None)
         .await
