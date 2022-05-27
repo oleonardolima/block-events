@@ -7,11 +7,6 @@ use bitcoin::Network;
 use futures_core::Stream;
 use url::Url;
 
-// TODO: (@leonardo.lima)
-// pub async fn fetch_new_mempool_blocks(network: Network);
-// pub async fn track_tx(network: Network, tx: String);
-// pub async fn track_address(network: Network, address: String);
-
 pub async fn subscribe_to_new_blocks(network: &Network, message: &MempoolSpaceWebSocketRequestMessage) -> anyhow::Result<impl Stream<Item = BlockExtended>>{
   let url: Url = url::Url::parse(&build_websocket_address(&network)).unwrap();
   websocket::publish_message(url, &message).await
