@@ -1,7 +1,8 @@
-use bitcoin::Network;
+use bitcoin::{Address, Network};
 use block_explorer_cli::{fetch_data_stream, MempoolSpaceWebSocketRequestData};
 use clap::{ArgGroup, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 #[derive(Parser)]
 #[clap(name = "CLI block explorer with mempool.space websocket - WIP")]
@@ -69,7 +70,10 @@ async fn main() {
 fn build_request_data(cli: &Cli) -> MempoolSpaceWebSocketRequestData {
     match &cli.command {
         Commands::AddressTracking { address } => {
-            return MempoolSpaceWebSocketRequestData::TrackAddress(String::from(address));
+            return MempoolSpaceWebSocketRequestData::TrackAddress(
+                Address::from_str(&address.as_str())
+                .unwrap()
+            );
         }
         Commands::DataStream { blocks, .. } => {
             if *blocks {
