@@ -1,6 +1,9 @@
 use bitcoin::{Address, Network};
+use block_explorer_cli::BlockEvent;
 use block_explorer_cli::{fetch_data_stream, MempoolSpaceWebSocketRequestData};
 use clap::{ArgGroup, Parser, Subcommand};
+use futures_util::pin_mut;
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -9,7 +12,8 @@ use std::str::FromStr;
 #[clap(author = "Leonardo L.")]
 #[clap(version = "0.1")]
 #[clap(about = "A work in progress CLI block explorer to be used with BDK, consuming data from mempool.space websocket.\n
-                This an initial competency test for Summer of Bitcoin 2022", long_about = None)]
+                This an initial competency test for Summer of Bitcoin 2022",
+    long_about = None)]
 
 struct Cli {
     #[clap(subcommand)]
@@ -57,13 +61,31 @@ struct TrackAddressMessage {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let data = build_request_data(&cli);
     let network = cli.network;
 
-    fetch_data_stream(&network, &data).await.unwrap();
+    let data_stream = fetch_data_stream(&network, &data).await?;
+
+    pin_mut!(data_stream);
+
+    while let Some(data) = data_stream.next().await {
+        match data {
+            BlockEvent::Connected(block) => {
+                println!("received following event: Block Connected: {:#?}", block);
+            },
+            BlockEvent::Disconnected((height, block_hash)) => {
+                println!("received following event: Block Disconnected: [height {:#?}] [block_hash: {:#?}]", height, block_hash);
+            }
+            BlockEvent::Error() => { 
+                eprint!("ERR: received an error from the data_stream");
+            }
+        }
+    };
+
+    Ok(())
 }
 
 #[allow(deprecated)]

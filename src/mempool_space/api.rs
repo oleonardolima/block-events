@@ -22,5 +22,12 @@ pub struct MempoolSpaceWebSocketRequestMessage {
 pub enum MempoolSpaceWebSocketRequestData {
   Blocks,
   MempoolBlocks,
-  TrackAddress(Address), // TODO:(@leonardo.lima) Update it to use bitcoin::Address instead
+  TrackAddress(Address),
+}
+
+#[derive(Debug)]
+pub enum BlockEvent {
+  Connected(BlockExtended),
+  Disconnected((u32, BlockHash)),
+  Error(),
 }
