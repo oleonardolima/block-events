@@ -1,12 +1,11 @@
 [package]
-# TODO: (@leonardo.lima) update project name
-name = "block-explorer-cli"
+name = "block-events"
 version = "0.1.0"
 edition = "2021"
 authors = ["Leonardo Souza <leonardo.lima@gmail.com>", "LLFourn <lloyd.fourn@gmail.com>"]
 repository = "https://github.com/oleonardolima/block-explorer-cli"
-description = "A real-time stream of blocks library"
-keywords = ["bitcoin", "blockchain", "blocks", "mempool"]
+description = "A real-time stream block events library, covering connected and disconnected blocks."
+keywords = ["bitcoin", "blockchain", "blocks", "mempool-space", "stream", "events"]
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 

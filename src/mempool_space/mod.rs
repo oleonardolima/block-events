@@ -21,7 +21,7 @@ pub fn build_websocket_request_message(data: &MempoolSpaceWebSocketRequestData) 
     match data {
       MempoolSpaceWebSocketRequestData::Blocks => { message.data.push(String::from("blocks")) },
       MempoolSpaceWebSocketRequestData::MempoolBlocks => { message.data.push(String::from("mempool-blocks")) },
-      // TODO: (@leonardo.lima) fix this track-address to use different struct
+      // FIXME: (@leonardo.lima) fix this track-address to use different struct
       MempoolSpaceWebSocketRequestData::TrackAddress(..) => { /* ignore */ },
     }
     message
