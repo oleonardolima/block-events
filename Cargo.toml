@@ -2,10 +2,10 @@
 name = "block-events"
 version = "0.1.0"
 edition = "2021"
-authors = ["Leonardo Souza <leonardo.lima@gmail.com>", "LLFourn <lloyd.fourn@gmail.com>"]
-repository = "https://github.com/oleonardolima/block-explorer-cli"
-description = "A real-time stream block events library, covering connected and disconnected blocks."
-keywords = ["bitcoin", "blockchain", "blocks", "mempool-space", "stream", "events"]
+authors = ["Leonardo Souza <leonardolimasza@gmail.com>", "LLFourn <lloyd.fourn@gmail.com>"]
+repository = "https://github.com/oleonardolima/block-events"
+description = "A real-time stream block events library, covering connected and disconnected blocks.\nThis a work in progress project for Summer of Bitcoin 2022."
+keywords = ["bitcoin", "blockchain", "blocks", "mempool-space", "stream", "events", "summer-of-bitcoin"]
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 
@@ -25,9 +25,9 @@ tokio-tungstenite = { version = "0.17.1", features = ["connect", "native-tls"]}
 url = { version = "2.0.0" }
 
 [lib]
-name = "block_explorer_cli"
+name = "block_events"
 path = "src/lib.rs"
 
 [[bin]]
-name = "block-explorer-cli"
+name = "block-events-cli"
 path = "src/bin.rs"

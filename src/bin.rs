@@ -1,19 +1,16 @@
 use bitcoin::{Address, Network};
-use block_explorer_cli::BlockEvent;
-use block_explorer_cli::{fetch_data_stream, MempoolSpaceWebSocketRequestData};
+use block_events::{fetch_data_stream, BlockEvent, MempoolSpaceWebSocketRequestData};
 use clap::{ArgGroup, Parser, Subcommand};
-use futures_util::pin_mut;
-use futures_util::StreamExt;
+use futures_util::{pin_mut, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 #[derive(Parser)]
-#[clap(name = "CLI block explorer with mempool.space websocket - WIP")]
-#[clap(author = "Leonardo L.")]
-#[clap(version = "0.1")]
-#[clap(about = "A work in progress CLI block explorer to be used with BDK, consuming data from mempool.space websocket.\n
-                This an initial competency test for Summer of Bitcoin 2022",
-    long_about = None)]
+#[clap(name = "block-events-cli")]
+#[clap(author = "Leonardo Souza <leonardolimasza@gmail.com>, LLFourn <lloyd.fourn@gmail.com>")]
+#[clap(version = "0.1.0")]
+#[clap(long_about = "A CLI interface and tool to use with the block-events library.\n
+This a work in progress project for Summer of Bitcoin 2022.")]
 
 struct Cli {
     #[clap(subcommand)]

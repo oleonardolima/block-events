@@ -1,13 +1,13 @@
-use anyhow::{anyhow, Ok};
-use futures_util::{SinkExt, StreamExt};
-use std::{time::Duration};
 use super::api::{MempoolSpaceWebSocketMessage, MempoolSpaceWebSocketRequestMessage, BlockEvent};
+
+use anyhow::{anyhow, Ok};
+use async_stream::stream;
+use futures_util::{SinkExt, StreamExt};
+use futures_util::stream::Stream;
+use std::{time::Duration};
 use tokio_tungstenite::connect_async_tls_with_config;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use url::Url;
-
-use async_stream::stream;
-use futures_util::stream::Stream;
 
 pub async fn connect_and_publish_message(url: Url, message: &MempoolSpaceWebSocketRequestMessage) -> anyhow::Result<impl Stream<Item = BlockEvent>> {
     let (mut websocket_stream, websocket_response) =

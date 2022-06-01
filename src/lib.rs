@@ -4,6 +4,7 @@ mod mempool_space;
 
 pub use mempool_space::{subscribe_to_new_blocks, build_websocket_request_message};
 pub use mempool_space::api::{MempoolSpaceWebSocketMessage, MempoolSpaceWebSocketRequestData, BlockEvent};
+
 use anyhow::{anyhow};
 use bitcoin::Network;
 use futures_core::Stream;
