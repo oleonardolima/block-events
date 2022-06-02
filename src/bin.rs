@@ -9,8 +9,10 @@ use std::str::FromStr;
 #[clap(name = "block-events-cli")]
 #[clap(author = "Leonardo Souza <leonardolimasza@gmail.com>, LLFourn <lloyd.fourn@gmail.com>")]
 #[clap(version = "0.1.0")]
-#[clap(long_about = "A CLI interface and tool to use with the block-events library.\n
-This a work in progress project for Summer of Bitcoin 2022.")]
+#[clap(
+    long_about = "A CLI interface and tool to use with the block-events library.\n
+This a work in progress project for Summer of Bitcoin 2022."
+)]
 
 struct Cli {
     #[clap(subcommand)]
@@ -72,15 +74,15 @@ async fn main() -> anyhow::Result<()> {
         match data {
             BlockEvent::Connected(block) => {
                 println!("received following event: Block Connected: {:#?}", block);
-            },
+            }
             BlockEvent::Disconnected((height, block_hash)) => {
                 println!("received following event: Block Disconnected: [height {:#?}] [block_hash: {:#?}]", height, block_hash);
             }
-            BlockEvent::Error() => { 
+            BlockEvent::Error() => {
                 eprint!("ERR: received an error from the data_stream");
             }
         }
-    };
+    }
 
     Ok(())
 }
@@ -90,13 +92,12 @@ fn build_request_data(cli: &Cli) -> MempoolSpaceWebSocketRequestData {
     match &cli.command {
         Commands::AddressTracking { address } => {
             return MempoolSpaceWebSocketRequestData::TrackAddress(
-                Address::from_str(&address.as_str())
-                .unwrap()
+                Address::from_str(&address.as_str()).unwrap(),
             );
         }
         Commands::DataStream { blocks, .. } => {
             if *blocks {
-                return MempoolSpaceWebSocketRequestData::Blocks
+                return MempoolSpaceWebSocketRequestData::Blocks;
             }
             return MempoolSpaceWebSocketRequestData::MempoolBlocks;
         }
