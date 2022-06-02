@@ -1,7 +1,6 @@
 pub mod api;
 pub mod websocket;
 
-use anyhow;
 use api::{BlockEvent, MempoolSpaceWebSocketRequestData, MempoolSpaceWebSocketRequestMessage};
 use bitcoin::Network;
 use futures_core::Stream;
@@ -11,8 +10,8 @@ pub async fn subscribe_to_new_blocks(
     network: &Network,
     message: &MempoolSpaceWebSocketRequestMessage,
 ) -> anyhow::Result<impl Stream<Item = BlockEvent>> {
-    let url: Url = url::Url::parse(&build_websocket_address(&network)).unwrap();
-    websocket::connect_and_publish_message(url, &message).await
+    let url: Url = url::Url::parse(&build_websocket_address(network)).unwrap();
+    websocket::connect_and_publish_message(url, message).await
 }
 
 pub fn build_websocket_request_message(

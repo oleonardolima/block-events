@@ -19,8 +19,8 @@ pub async fn fetch_data_stream(
 
     match data {
         MempoolSpaceWebSocketRequestData::Blocks => {
-            let message = build_websocket_request_message(&data);
-            subscribe_to_new_blocks(&network, &message).await
+            let message = build_websocket_request_message(data);
+            subscribe_to_new_blocks(network, &message).await
         }
         MempoolSpaceWebSocketRequestData::MempoolBlocks => {
             return Err(anyhow!(

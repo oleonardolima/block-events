@@ -92,14 +92,14 @@ fn build_request_data(cli: &Cli) -> MempoolSpaceWebSocketRequestData {
     match &cli.command {
         Commands::AddressTracking { address } => {
             return MempoolSpaceWebSocketRequestData::TrackAddress(
-                Address::from_str(&address.as_str()).unwrap(),
+                Address::from_str(address.as_str()).unwrap(),
             );
         }
         Commands::DataStream { blocks, .. } => {
             if *blocks {
                 return MempoolSpaceWebSocketRequestData::Blocks;
             }
-            return MempoolSpaceWebSocketRequestData::MempoolBlocks;
+            MempoolSpaceWebSocketRequestData::MempoolBlocks
         }
     }
 }

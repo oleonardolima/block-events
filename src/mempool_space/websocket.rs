@@ -16,7 +16,7 @@ pub async fn connect_and_publish_message(
     let (mut websocket_stream, websocket_response) =
         connect_async_tls_with_config(&url, None, None)
             .await
-            .expect(&format!("failed to connect with url: {}", &url));
+            .unwrap_or_else(|_| panic!("failed to connect with url: {}", &url));
 
     log::info!("websocket handshake successfully completed!");
     log::info!(
@@ -25,7 +25,7 @@ pub async fn connect_and_publish_message(
     );
 
     let item = serde_json::to_string(&message).unwrap();
-    if let Err(_) = websocket_stream.send(Message::text(&item)).await {
+    if (websocket_stream.send(Message::text(&item)).await).is_err() {
         log::error!("failed to publish first message to websocket");
         return Err(anyhow!("failed to publish first message to websocket"));
     };
