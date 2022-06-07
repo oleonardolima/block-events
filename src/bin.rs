@@ -1,5 +1,7 @@
 use bitcoin::{Address, Network};
-use block_events::{fetch_data_stream, BlockEvent, MempoolSpaceWebSocketRequestData};
+use block_events::{
+    fetch_data_stream, get_default_websocket_address, BlockEvent, MempoolSpaceWebSocketRequestData,
+};
 use clap::{ArgGroup, Parser, Subcommand};
 use futures_util::{pin_mut, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -61,25 +63,31 @@ struct TrackAddressMessage {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    env_logger::init();
+
     let cli = Cli::parse();
 
     let data = build_request_data(&cli);
     let network = cli.network;
 
-    let data_stream = fetch_data_stream(&network, &data).await?;
+    let url = url::Url::parse(&get_default_websocket_address(&network)).unwrap();
+    let data_stream = fetch_data_stream(&url, &data).await?;
 
     pin_mut!(data_stream);
 
     while let Some(data) = data_stream.next().await {
         match data {
             BlockEvent::Connected(block) => {
-                println!("received following event: Block Connected: {:#?}", block);
+                println!("[Event][Block Connected]\n {:#?}", block);
             }
             BlockEvent::Disconnected((height, block_hash)) => {
-                println!("received following event: Block Disconnected: [height {:#?}] [block_hash: {:#?}]", height, block_hash);
+                println!(
+                    "[Event][Block Disconnected] [height {:#?}] [block_hash: {:#?}]",
+                    height, block_hash
+                );
             }
             BlockEvent::Error() => {
-                eprint!("ERR: received an error from the data_stream");
+                eprint!("ERROR: received an error from the data_stream");
             }
         }
     }

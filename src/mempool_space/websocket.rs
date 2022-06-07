@@ -1,4 +1,7 @@
-use super::api::{BlockEvent, MempoolSpaceWebSocketMessage, MempoolSpaceWebSocketRequestMessage};
+use super::api::{
+    BlockEvent, MempoolSpaceWebSocketMessage, MempoolSpaceWebSocketRequestData,
+    MempoolSpaceWebSocketRequestMessage,
+};
 
 use anyhow::{anyhow, Ok};
 use async_stream::stream;
@@ -9,14 +12,9 @@ use tokio_tungstenite::connect_async_tls_with_config;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use url::Url;
 
-pub async fn connect_and_publish_message(
-    url: Url,
-    message: &MempoolSpaceWebSocketRequestMessage,
-) -> anyhow::Result<impl Stream<Item = BlockEvent>> {
+pub async fn subscribe_to_blocks(url: &Url) -> anyhow::Result<impl Stream<Item = BlockEvent>> {
     let (mut websocket_stream, websocket_response) =
-        connect_async_tls_with_config(&url, None, None)
-            .await
-            .unwrap_or_else(|_| panic!("failed to connect with url: {}", &url));
+        connect_async_tls_with_config(url, None, None).await?;
 
     log::info!("websocket handshake successfully completed!");
     log::info!(
@@ -24,6 +22,7 @@ pub async fn connect_and_publish_message(
         websocket_response
     );
 
+    let message = build_websocket_request_message(&MempoolSpaceWebSocketRequestData::Blocks);
     let item = serde_json::to_string(&message).unwrap();
     if (websocket_stream.send(Message::text(&item)).await).is_err() {
         log::error!("failed to publish first message to websocket");
@@ -64,4 +63,23 @@ pub async fn connect_and_publish_message(
         }
     };
     Ok(stream)
+}
+
+fn build_websocket_request_message(
+    data: &MempoolSpaceWebSocketRequestData,
+) -> MempoolSpaceWebSocketRequestMessage {
+    let mut message = MempoolSpaceWebSocketRequestMessage {
+        action: String::from("want"),
+        data: vec![],
+    };
+
+    match data {
+        MempoolSpaceWebSocketRequestData::Blocks => message.data.push(String::from("blocks")),
+        MempoolSpaceWebSocketRequestData::MempoolBlocks => {
+            message.data.push(String::from("mempool-blocks"))
+        }
+        // FIXME: (@leonardo.lima) fix this track-address to use different struct
+        MempoolSpaceWebSocketRequestData::TrackAddress(..) => { /* ignore */ }
+    }
+    message
 }
