@@ -47,7 +47,7 @@ cargo run -- --network testnet data-stream --blocks
 ``` rust
 use anyhow::{self, Ok};
 use bitcoin::Network;
-use block_events::{fetch_data_stream, BlockEvent, MempoolSpaceWebSocketRequestData};
+use block_events::{fetch_data_stream, get_default_websocket_address, BlockEvent, MempoolSpaceWebSocketRequestData};
 use futures_util::{ pin_mut, StreamExt};
 
 #[tokio::main]
@@ -56,8 +56,10 @@ async fn main() -> anyhow::Result<()> {
     let network = Network::Regtest;
     // for new blocks events
     let blocks_data = MempoolSpaceWebSocketRequestData::Blocks;
+    // build url for mempool-space endpoint (it could get by network or use an specific local-hosted one)
+    let url = url::Url::parse(&get_default_websocket_address(&network)).unwrap();
     // async fetch the data stream through the lib
-    let block_events_stream = fetch_data_stream(&network, &blocks_data).await?;
+    let block_events_stream = fetch_data_stream(&url, &data).await?;
 
     // consume and execute the code (current matching and printing) in async manner for each new block-event
     pin_mut!(block_events_stream);
