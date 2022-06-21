@@ -13,6 +13,7 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 use url::Url;
 
 pub async fn subscribe_to_blocks(url: &Url) -> anyhow::Result<impl Stream<Item = BlockEvent>> {
+    log::info!("starting websocket handshake [url {}]", url);
     let (mut websocket_stream, websocket_response) =
         connect_async_tls_with_config(url, None, None).await?;
 
@@ -40,6 +41,7 @@ pub async fn subscribe_to_blocks(url: &Url) -> anyhow::Result<impl Stream<Item =
                     if let Some(message) = message {
                         match message.unwrap() {
                             Message::Text(text) => {
+                                log::debug!("[Message::Text {}]", text);
                                 let res_message: MempoolSpaceWebSocketMessage = serde_json::from_str(&text).unwrap();
                                 yield BlockEvent::Connected(res_message.block);
                             },

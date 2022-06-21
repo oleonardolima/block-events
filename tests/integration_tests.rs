@@ -1,9 +1,12 @@
-use std::time::Duration;
-
 use bitcoin::Network;
-use block_events::{fetch_data_stream, get_default_websocket_address};
+use bitcoind::bitcoincore_rpc::RpcApi;
+use block_events::{fetch_data_stream, get_default_websocket_address, BlockEvent};
 use electrsd::bitcoind::BitcoinD;
+use futures_util::{pin_mut, StreamExt};
+use std::time::Duration;
 use testcontainers::{clients, images, images::generic::GenericImage, RunnableImage};
+
+const HOST_IP: &str = "127.0.0.1";
 
 const MARIADB_NAME: &str = "mariadb";
 const MARIADB_TAG: &str = "10.5.8";
@@ -147,16 +150,61 @@ fn should_return_websocket_address() {
     assert_eq!(address, "wss://mempool.space/testnet/api/v1/ws");
 }
 
-#[test]
-fn should_produce_stream_of_block_events() {
+#[tokio::test]
+async fn should_produce_stream_of_block_events() {
     let _ = env_logger::try_init();
-    let mut delay = Duration::from_millis(10000);
+    let delay = Duration::from_millis(5000);
 
     let docker = clients::Cli::docker();
     let client = MempoolTestClient::default();
 
-    let mariadb = docker.run(client.mariadb_database);
+    let _mariadb = docker.run(client.mariadb_database);
     std::thread::sleep(delay); // there is some delay between running the docker and the port being really available
 
     let mempool = docker.run(client.mempool_backend);
+
+    let block_data = block_events::MempoolSpaceWebSocketRequestData::Blocks;
+    let ws_url = url::Url::parse(
+        format!(
+            "ws://{}:{}/api/v1/ws",
+            HOST_IP,
+            mempool.get_host_port_ipv4(8999)
+        )
+        .as_str(),
+    )
+    .unwrap();
+
+    // subscribe to websocket (mempool/backend docker container), generate `block_num` new blocks
+    // check for all generate blocks being consumed and listened by websocket client
+
+    // get block-events stream
+    let block_events = fetch_data_stream(&ws_url, &block_data).await.unwrap();
+
+    // generate new blocks through bitcoind rpc-client
+    let rpc_client = &client.bitcoind.client;
+
+    // generate `block_num` new blocks
+    let block_num = 10;
+    let generated_blocks = rpc_client
+        .generate_to_address(block_num, &rpc_client.get_new_address(None, None).unwrap())
+        .unwrap();
+
+    // consume new blocks from block-events stream
+    pin_mut!(block_events);
+
+    for i in 0..=block_num {
+        let block_hash = generated_blocks.get(i as usize);
+        let block_event = block_events.next().await.unwrap();
+
+        // should produce a BlockEvent::Connected result for each block event
+        assert!(matches!(block_event, BlockEvent::Connected { .. }));
+
+        // should parse the BlockEvent::Connected successfully
+        let connected_block = match block_event {
+            BlockEvent::Connected(block) => block,
+            _ => unreachable!("This test is supposed to have only connected blocks, please check why it's generating disconnected and/or errors at the moment."),
+        };
+
+        assert_eq!(block_hash.unwrap().to_owned(), connected_block.id);
+    }
 }
