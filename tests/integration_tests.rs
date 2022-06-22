@@ -48,7 +48,13 @@ impl MempoolTestClient {
 
         let mut conf = bitcoind::Conf::default();
         let rpc_auth = format!("-rpcauth={}", RPC_AUTH);
+        let rpc_bind = format!("-rpcbind=0.0.0.0");
         conf.args.push(rpc_auth.as_str());
+        conf.args.push(rpc_bind.as_str());
+        conf.args.push("-txindex");
+        conf.args.push("-server");
+
+        log::debug!("[bitcoind::Conf {:?}]", conf);
 
         let bitcoind = BitcoinD::with_conf(&bitcoind_exe, &conf).unwrap();
 
@@ -113,7 +119,7 @@ impl MempoolTestClient {
 
         let image = RunnableImage::from(image)
             .with_env_var(("MEMPOOL_BACKEND", "none"))
-            .with_env_var(("MEMPOOL_NETWORK", "regtest"))
+            // .with_env_var(("MEMPOOL_NETWORK", "regtest"))
             .with_env_var(("DATABASE_HOST", docker_host_address().to_string()))
             .with_env_var(("CORE_RPC_HOST", docker_host_address().to_string()))
             .with_env_var(("CORE_RPC_PORT", bitcoind_port))
@@ -153,7 +159,7 @@ fn should_return_websocket_address() {
 #[tokio::test]
 async fn should_produce_stream_of_block_events() {
     let _ = env_logger::try_init();
-    let delay = Duration::from_millis(5000);
+    let delay = Duration::from_millis(60000);
 
     let docker = clients::Cli::docker();
     let client = MempoolTestClient::default();
@@ -188,6 +194,7 @@ async fn should_produce_stream_of_block_events() {
     let generated_blocks = rpc_client
         .generate_to_address(block_num, &rpc_client.get_new_address(None, None).unwrap())
         .unwrap();
+    log::debug!("[generated_blocks {:?}]", generated_blocks);
 
     // consume new blocks from block-events stream
     pin_mut!(block_events);

@@ -42,8 +42,15 @@ pub async fn subscribe_to_blocks(url: &Url) -> anyhow::Result<impl Stream<Item =
                         match message.unwrap() {
                             Message::Text(text) => {
                                 log::debug!("[Message::Text {}]", text);
-                                let res_message: MempoolSpaceWebSocketMessage = serde_json::from_str(&text).unwrap();
-                                yield BlockEvent::Connected(res_message.block);
+                                let parse_ws_msg = || -> anyhow::Result<()> {
+                                    let _: MempoolSpaceWebSocketMessage = serde_json::from_str(&text)?;
+                                    Ok(())
+                                };
+                                if let Err(_) = parse_ws_msg() {
+                                    continue
+                                }
+                                let res_msg: MempoolSpaceWebSocketMessage = serde_json::from_str(&text).unwrap();
+                                yield BlockEvent::Connected(res_msg.block);
                             },
                             Message::Close(_) => {
                                 eprintln!("websocket closing gracefully");
