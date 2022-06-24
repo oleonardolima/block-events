@@ -1,9 +1,8 @@
 use bitcoin::Network;
-use bitcoind::bitcoincore_rpc::RpcApi;
+use bitcoind::{bitcoincore_rpc::RpcApi, BitcoinD};
 use block_events::{fetch_data_stream, get_default_websocket_address, BlockEvent};
-use electrsd::bitcoind::BitcoinD;
 use futures_util::{pin_mut, StreamExt};
-use std::time::Duration;
+use std::{collections::VecDeque, time::Duration};
 use testcontainers::{clients, images, images::generic::GenericImage, RunnableImage};
 
 const HOST_IP: &str = "127.0.0.1";
@@ -157,9 +156,9 @@ fn should_return_websocket_address() {
 }
 
 #[tokio::test]
-async fn should_produce_stream_of_block_events() {
+async fn should_return_stream_of_block_events() {
     let _ = env_logger::try_init();
-    let delay = Duration::from_millis(60000);
+    let delay = Duration::from_millis(5000);
 
     let docker = clients::Cli::docker();
     let client = MempoolTestClient::default();
@@ -169,7 +168,7 @@ async fn should_produce_stream_of_block_events() {
 
     let mempool = docker.run(client.mempool_backend);
 
-    let block_data = block_events::MempoolSpaceWebSocketRequestData::Blocks;
+    let data = block_events::MempoolSpaceWebSocketRequestData::Blocks;
     let ws_url = url::Url::parse(
         format!(
             "ws://{}:{}/api/v1/ws",
@@ -184,23 +183,21 @@ async fn should_produce_stream_of_block_events() {
     // check for all generate blocks being consumed and listened by websocket client
 
     // get block-events stream
-    let block_events = fetch_data_stream(&ws_url, &block_data).await.unwrap();
+    let block_events = fetch_data_stream(&ws_url, &data).await.unwrap();
 
-    // generate new blocks through bitcoind rpc-client
+    // generate `block_num==5` new blocks through bitcoind rpc-client
     let rpc_client = &client.bitcoind.client;
-
-    // generate `block_num` new blocks
-    let block_num = 10;
-    let generated_blocks = rpc_client
-        .generate_to_address(block_num, &rpc_client.get_new_address(None, None).unwrap())
-        .unwrap();
-    log::debug!("[generated_blocks {:?}]", generated_blocks);
+    let mut generated_blocks = VecDeque::from(
+        rpc_client
+            .generate_to_address(5, &rpc_client.get_new_address(None, None).unwrap())
+            .unwrap(),
+    );
+    log::debug!("[gen_block_hashes {:?}]", generated_blocks);
 
     // consume new blocks from block-events stream
     pin_mut!(block_events);
-
-    for i in 0..=block_num {
-        let block_hash = generated_blocks.get(i as usize);
+    while !generated_blocks.is_empty() {
+        let block_hash = generated_blocks.pop_front();
         let block_event = block_events.next().await.unwrap();
 
         // should produce a BlockEvent::Connected result for each block event
@@ -212,6 +209,11 @@ async fn should_produce_stream_of_block_events() {
             _ => unreachable!("This test is supposed to have only connected blocks, please check why it's generating disconnected and/or errors at the moment."),
         };
 
+        log::debug!(
+            "[gen_block_hash {}] [con_block_hash {}]",
+            block_hash.unwrap().to_owned(),
+            connected_block.id
+        );
         assert_eq!(block_hash.unwrap().to_owned(), connected_block.id);
     }
 }
