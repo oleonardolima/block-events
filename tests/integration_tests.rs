@@ -1,6 +1,5 @@
-use bitcoin::Network;
 use bitcoind::{bitcoincore_rpc::RpcApi, BitcoinD};
-use block_events::{fetch_data_stream, get_default_websocket_address, BlockEvent};
+use block_events::{api::BlockEvent, websocket};
 use futures_util::{pin_mut, StreamExt};
 use std::{collections::VecDeque, time::Duration};
 use testcontainers::{clients, images, images::generic::GenericImage, RunnableImage};
@@ -147,33 +146,15 @@ impl Default for MempoolTestClient {
     }
 }
 
-#[test]
-fn should_return_websocket_address() {
-    let network = Network::Regtest;
-    let address = get_default_websocket_address(&network);
-    assert_eq!(address, "ws://localhost:8999/api/v1/ws");
-
-    let network = Network::Testnet;
-    let address = get_default_websocket_address(&network);
-    assert_eq!(address, "wss://mempool.space/testnet/api/v1/ws");
-
-    let network = Network::Signet;
-    let address = get_default_websocket_address(&network);
-    assert_eq!(address, "wss://mempool.space/signet/api/v1/ws");
-
-    let network = Network::Bitcoin;
-    let address = get_default_websocket_address(&network);
-    assert_eq!(address, "wss://mempool.space/api/v1/ws");
-}
-
 #[tokio::test]
 async fn should_return_error_for_invalid_websocket_url() {
-    let data = block_events::MempoolSpaceWebSocketRequestData::Blocks;
     let ws_url = url::Url::parse(format!("ws://{}:{}/api/v1/ws", HOST_IP, 8999).as_str()).unwrap();
 
     // should return connection Err.
-    let block_events = fetch_data_stream(&ws_url, &data).await;
+    let block_events = websocket::subscribe_to_blocks(&ws_url).await;
+
     assert!(block_events.is_err());
+
     assert_eq!(
         block_events.err().unwrap().to_string(),
         "IO error: Connection refused (os error 61)"
@@ -193,7 +174,6 @@ async fn should_return_stream_of_block_events() {
 
     let mempool = docker.run(client.mempool_backend);
 
-    let data = block_events::MempoolSpaceWebSocketRequestData::Blocks;
     let ws_url = url::Url::parse(
         format!(
             "ws://{}:{}/api/v1/ws",
@@ -208,7 +188,7 @@ async fn should_return_stream_of_block_events() {
     // check for all generate blocks being consumed and listened by websocket client
 
     // get block-events stream
-    let block_events = fetch_data_stream(&ws_url, &data).await.unwrap();
+    let block_events = websocket::subscribe_to_blocks(&ws_url).await.unwrap();
 
     // generate `block_num==5` new blocks through bitcoind rpc-client
     let rpc_client = &client.bitcoind.client;
