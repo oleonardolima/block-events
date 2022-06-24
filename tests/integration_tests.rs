@@ -149,10 +149,35 @@ impl Default for MempoolTestClient {
 
 #[test]
 fn should_return_websocket_address() {
+    let network = Network::Regtest;
+    let address = get_default_websocket_address(&network);
+    assert_eq!(address, "ws://localhost:8999/api/v1/ws");
+
     let network = Network::Testnet;
     let address = get_default_websocket_address(&network);
-
     assert_eq!(address, "wss://mempool.space/testnet/api/v1/ws");
+
+    let network = Network::Signet;
+    let address = get_default_websocket_address(&network);
+    assert_eq!(address, "wss://mempool.space/signet/api/v1/ws");
+
+    let network = Network::Bitcoin;
+    let address = get_default_websocket_address(&network);
+    assert_eq!(address, "wss://mempool.space/api/v1/ws");
+}
+
+#[tokio::test]
+async fn should_return_error_for_invalid_websocket_url() {
+    let data = block_events::MempoolSpaceWebSocketRequestData::Blocks;
+    let ws_url = url::Url::parse(format!("ws://{}:{}/api/v1/ws", HOST_IP, 8999).as_str()).unwrap();
+
+    // should return connection Err.
+    let block_events = fetch_data_stream(&ws_url, &data).await;
+    assert!(block_events.is_err());
+    assert_eq!(
+        block_events.err().unwrap().to_string(),
+        "IO error: Connection refused (os error 61)"
+    );
 }
 
 #[tokio::test]
