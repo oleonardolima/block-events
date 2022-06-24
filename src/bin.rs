@@ -1,11 +1,8 @@
-use bitcoin::{Address, Network};
-use block_events::{
-    fetch_data_stream, get_default_websocket_address, BlockEvent, MempoolSpaceWebSocketRequestData,
-};
+use bitcoin::Network;
+use block_events::api::BlockEvent;
 use clap::{ArgGroup, Parser, Subcommand};
 use futures_util::{pin_mut, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 
 #[derive(Parser)]
 #[clap(name = "block-events-cli")]
@@ -67,11 +64,14 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
-    let data = build_request_data(&cli);
-    let network = cli.network;
+    let websocket_url = url::Url::parse(&match cli.network {
+        Network::Bitcoin => "wss://mempool.space/api/v1/ws".to_string(),
+        Network::Regtest => "ws://localhost/api/v1/ws".to_string(),
+        network => format!("wss://mempool.space/{}/api/v1/ws", network),
+    })
+    .unwrap();
 
-    let url = url::Url::parse(&get_default_websocket_address(&network)).unwrap();
-    let data_stream = fetch_data_stream(&url, &data).await?;
+    let data_stream = block_events::websocket::subscribe_to_blocks(&websocket_url).await?;
 
     pin_mut!(data_stream);
 
@@ -93,21 +93,4 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-#[allow(deprecated)]
-fn build_request_data(cli: &Cli) -> MempoolSpaceWebSocketRequestData {
-    match &cli.command {
-        Commands::AddressTracking { address } => {
-            return MempoolSpaceWebSocketRequestData::TrackAddress(
-                Address::from_str(address.as_str()).unwrap(),
-            );
-        }
-        Commands::DataStream { blocks, .. } => {
-            if *blocks {
-                return MempoolSpaceWebSocketRequestData::Blocks;
-            }
-            MempoolSpaceWebSocketRequestData::MempoolBlocks
-        }
-    }
 }
