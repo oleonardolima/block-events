@@ -1,11 +1,8 @@
-use bitcoin::{Address, Network};
-use block_events::{
-    fetch_data_stream, get_default_websocket_address, BlockEvent, MempoolSpaceWebSocketRequestData,
-};
+use bitcoin::Network;
+use block_events::api::BlockEvent;
 use clap::{ArgGroup, Parser, Subcommand};
 use futures_util::{pin_mut, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 
 #[derive(Parser)]
 #[clap(name = "block-events-cli")]
@@ -67,47 +64,34 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
-    let data = build_request_data(&cli);
-    let network = cli.network;
+    // build the url by the network argument
+    let url = url::Url::parse(&match cli.network {
+        Network::Bitcoin => "wss://mempool.space/api/v1/ws".to_string(),
+        Network::Regtest => "ws://localhost:8999/api/v1/ws".to_string(),
+        network => format!("wss://mempool.space/{}/api/v1/ws", network),
+    })
+    .unwrap();
 
-    let url = url::Url::parse(&get_default_websocket_address(&network)).unwrap();
-    let data_stream = fetch_data_stream(&url, &data).await?;
+    // async fetch the data stream through the lib
+    let block_events = block_events::websocket::subscribe_to_blocks(&url).await?;
 
-    pin_mut!(data_stream);
-
-    while let Some(data) = data_stream.next().await {
-        match data {
+    // consume and execute the code (current matching and printing) in async manner for each new block-event
+    pin_mut!(block_events);
+    while let Some(block_event) = block_events.next().await {
+        match block_event {
             BlockEvent::Connected(block) => {
-                println!("[Event][Block Connected]\n {:#?}", block);
+                println!("Connected BlockEvent: {:#?}", block);
             }
             BlockEvent::Disconnected((height, block_hash)) => {
                 println!(
-                    "[Event][Block Disconnected] [height {:#?}] [block_hash: {:#?}]",
+                    "Disconnected BlockEvent: [height {:#?}] [block_hash: {:#?}]",
                     height, block_hash
                 );
             }
             BlockEvent::Error() => {
-                eprint!("ERROR: received an error from the data_stream");
+                eprint!("ERROR BlockEvent: received an error from the block-events stream");
             }
         }
     }
-
     Ok(())
-}
-
-#[allow(deprecated)]
-fn build_request_data(cli: &Cli) -> MempoolSpaceWebSocketRequestData {
-    match &cli.command {
-        Commands::AddressTracking { address } => {
-            return MempoolSpaceWebSocketRequestData::TrackAddress(
-                Address::from_str(address.as_str()).unwrap(),
-            );
-        }
-        Commands::DataStream { blocks, .. } => {
-            if *blocks {
-                return MempoolSpaceWebSocketRequestData::Blocks;
-            }
-            MempoolSpaceWebSocketRequestData::MempoolBlocks
-        }
-    }
 }

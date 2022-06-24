@@ -46,36 +46,37 @@ cargo run -- --network testnet data-stream --blocks
 ### Subscribing and consuming new block events through the lib:
 ``` rust
 use anyhow::{self, Ok};
-use bitcoin::Network;
-use block_events::{fetch_data_stream, get_default_websocket_address, BlockEvent, MempoolSpaceWebSocketRequestData};
-use futures_util::{ pin_mut, StreamExt};
+use block_events::api::BlockEvent;
+use futures_util::{pin_mut, StreamExt};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    env_logger::init();
+
     // for regtest network
-    let network = Network::Regtest;
-    // for new blocks events
-    let blocks_data = MempoolSpaceWebSocketRequestData::Blocks;
-    // build url for mempool-space endpoint (it could get by network or use an specific local-hosted one)
-    let url = url::Url::parse(&get_default_websocket_address(&network)).unwrap();
+    let url = url::Url::parse("ws://localhost:8999/api/v1/ws").unwrap();
+
     // async fetch the data stream through the lib
-    let block_events_stream = fetch_data_stream(&url, &data).await?;
+    let block_events = block_events::websocket::subscribe_to_blocks(&url).await?;
 
     // consume and execute the code (current matching and printing) in async manner for each new block-event
-    pin_mut!(block_events_stream);
-    while let Some(block_event) = block_events_stream.next().await {
+    pin_mut!(block_events);
+    while let Some(block_event) = block_events.next().await {
         match block_event {
             BlockEvent::Connected(block) => {
                 println!("Connected BlockEvent: {:#?}", block);
-            },
+            }
             BlockEvent::Disconnected((height, block_hash)) => {
-                println!("Disconnected BlockEvent: [height {:#?}] [block_hash: {:#?}]", height, block_hash);
+                println!(
+                    "Disconnected BlockEvent: [height {:#?}] [block_hash: {:#?}]",
+                    height, block_hash
+                );
             }
             BlockEvent::Error() => {
                 eprint!("ERROR BlockEvent: received an error from the block-events stream");
             }
         }
-    };
+    }
     Ok(())
 }
 ```
