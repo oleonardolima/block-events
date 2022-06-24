@@ -64,33 +64,34 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
-    let websocket_url = url::Url::parse(&match cli.network {
+    // build the url by the network argument
+    let url = url::Url::parse(&match cli.network {
         Network::Bitcoin => "wss://mempool.space/api/v1/ws".to_string(),
-        Network::Regtest => "ws://localhost/api/v1/ws".to_string(),
+        Network::Regtest => "ws://localhost:8999/api/v1/ws".to_string(),
         network => format!("wss://mempool.space/{}/api/v1/ws", network),
     })
     .unwrap();
 
-    let data_stream = block_events::websocket::subscribe_to_blocks(&websocket_url).await?;
+    // async fetch the data stream through the lib
+    let block_events = block_events::websocket::subscribe_to_blocks(&url).await?;
 
-    pin_mut!(data_stream);
-
-    while let Some(data) = data_stream.next().await {
-        match data {
+    // consume and execute the code (current matching and printing) in async manner for each new block-event
+    pin_mut!(block_events);
+    while let Some(block_event) = block_events.next().await {
+        match block_event {
             BlockEvent::Connected(block) => {
-                println!("[Event][Block Connected]\n {:#?}", block);
+                println!("Connected BlockEvent: {:#?}", block);
             }
             BlockEvent::Disconnected((height, block_hash)) => {
                 println!(
-                    "[Event][Block Disconnected] [height {:#?}] [block_hash: {:#?}]",
+                    "Disconnected BlockEvent: [height {:#?}] [block_hash: {:#?}]",
                     height, block_hash
                 );
             }
             BlockEvent::Error() => {
-                eprint!("ERROR: received an error from the data_stream");
+                eprint!("ERROR BlockEvent: received an error from the block-events stream");
             }
         }
     }
-
     Ok(())
 }
