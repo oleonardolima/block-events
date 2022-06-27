@@ -1,6 +1,7 @@
 use bitcoind::{bitcoincore_rpc::RpcApi, BitcoinD};
-use block_events::{api::BlockEvent, websocket};
+use block_events::{api::BlockEvent, http::HttpClient, websocket};
 use futures_util::{pin_mut, StreamExt};
+use serial_test::serial;
 use std::{collections::VecDeque, time::Duration};
 use testcontainers::{clients, images, images::generic::GenericImage, RunnableImage};
 
@@ -162,6 +163,7 @@ async fn should_return_error_for_invalid_websocket_url() {
 }
 
 #[tokio::test]
+#[serial]
 async fn should_return_stream_of_block_events() {
     let _ = env_logger::try_init();
     let delay = Duration::from_millis(5000);
@@ -220,5 +222,85 @@ async fn should_return_stream_of_block_events() {
             connected_block.id
         );
         assert_eq!(block_hash.unwrap().to_owned(), connected_block.id);
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn should_return_tip_height() {
+    let _ = env_logger::try_init();
+    let delay = Duration::from_millis(5000);
+
+    let docker = clients::Cli::docker();
+    let client = MempoolTestClient::default();
+
+    let _mariadb = docker.run(client.mariadb_database);
+    std::thread::sleep(delay); // there is some delay between running the docker and the port being really available
+
+    let mempool = docker.run(client.mempool_backend);
+
+    let concurrency = 4;
+    let base_url = url::Url::parse(
+        format!(
+            "http://{}:{}/api/v1",
+            HOST_IP,
+            mempool.get_host_port_ipv4(8999)
+        )
+        .as_str(),
+    )
+    .unwrap();
+
+    // generate `block_num==5` new blocks through bitcoind rpc-client
+    let rpc_client = &client.bitcoind.client;
+    let http_client = HttpClient::new(&base_url, concurrency);
+
+    for i in 0..10 {
+        let tip = http_client._get_height().await.unwrap();
+        assert_eq!(i, tip);
+
+        let _ = rpc_client
+            .generate_to_address(1, &rpc_client.get_new_address(None, None).unwrap())
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn should_return_block_hash_for_height() {
+    let _ = env_logger::try_init();
+    let delay = Duration::from_millis(5000);
+
+    let docker = clients::Cli::docker();
+    let client = MempoolTestClient::default();
+
+    let _mariadb = docker.run(client.mariadb_database);
+    std::thread::sleep(delay); // there is some delay between running the docker and the port being really available
+
+    let mempool = docker.run(client.mempool_backend);
+
+    let concurrency = 4;
+    let base_url = url::Url::parse(
+        format!(
+            "http://{}:{}/api/v1",
+            HOST_IP,
+            mempool.get_host_port_ipv4(8999)
+        )
+        .as_str(),
+    )
+    .unwrap();
+
+    // generate `block_num==5` new blocks through bitcoind rpc-client
+    let rpc_client = &client.bitcoind.client;
+    let http_client = HttpClient::new(&base_url, concurrency);
+
+    // should return an error if there is no block created yet for given height
+    assert!(http_client._get_block_height(100).await.is_err());
+    for i in 1..10 {
+        let gen_hash = rpc_client
+            .generate_to_address(1, &rpc_client.get_new_address(None, None).unwrap())
+            .unwrap();
+
+        let res_hash = http_client._get_block_height(i).await.unwrap();
+        assert_eq!(gen_hash.first().unwrap(), &res_hash);
     }
 }
