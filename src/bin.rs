@@ -75,12 +75,36 @@ async fn main() -> anyhow::Result<()> {
 
     // async fetch the data stream through the lib
     // let block_events = block_events::websocket::subscribe_to_blocks(&url).await?;
-    let block_events = block_events::subscribe_to_blocks(&url, Some(2)).await?;
 
     // consume and execute the code (current matching and printing) in async manner for each new block-event
-    pin_mut!(block_events);
-    while let Some(block_event) = block_events.next().await {
-        match block_event {
+    // pin_mut!(block_events);
+    // while let Some(block_event) = block_events.next().await {
+    //     match block_event {
+    //         BlockEvent::Connected(block) => {
+    //             println!("Connected BlockEvent: {:#?}", block);
+    //         }
+    //         BlockEvent::Disconnected((height, block_hash)) => {
+    //             println!(
+    //                 "Disconnected BlockEvent: [height {:#?}] [block_hash: {:#?}]",
+    //                 height, block_hash
+    //             );
+    //         }
+    //         BlockEvent::Error() => {
+    //             eprint!("ERROR BlockEvent: received an error from the block-events stream");
+    //         }
+    //     }
+    // }
+
+    // async fetch the data stream through the lib
+    let events = block_events::subscribe_to_blocks(&url, Some(1)).await;
+
+    let prev = events.0.unwrap().unwrap();
+    let new = events.1.unwrap();
+
+    // consume and execute the code (current matching and printing) in async manner for each new block-event
+    pin_mut!(prev);
+    while let Some(prev) = prev.next().await {
+        match prev {
             BlockEvent::Connected(block) => {
                 println!("Connected BlockEvent: {:#?}", block);
             }
@@ -95,6 +119,26 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     }
+
+    // consume and execute the code (current matching and printing) in async manner for each new block-event
+    pin_mut!(new);
+    while let Some(new) = new.next().await {
+        match new {
+            BlockEvent::Connected(block) => {
+                println!("Connected BlockEvent: {:#?}", block);
+            }
+            BlockEvent::Disconnected((height, block_hash)) => {
+                println!(
+                    "Disconnected BlockEvent: [height {:#?}] [block_hash: {:#?}]",
+                    height, block_hash
+                );
+            }
+            BlockEvent::Error() => {
+                eprint!("ERROR BlockEvent: received an error from the block-events stream");
+            }
+        }
+    }
+
     Ok(())
 
     // let url = url::Url::parse(&match cli.network {

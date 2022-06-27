@@ -1,6 +1,6 @@
 use bitcoin::{Address, BlockHash};
 
-#[derive(serde::Deserialize, Clone, Debug)]
+#[derive(serde::Deserialize, Clone, Debug, Copy)]
 pub struct BlockExtended {
     pub height: u32,
     pub timestamp: u32,
@@ -25,7 +25,7 @@ pub enum MempoolSpaceWebSocketRequestData {
     TrackAddress(Address),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BlockEvent {
     Connected(BlockExtended),
     Disconnected((u32, BlockHash)),
