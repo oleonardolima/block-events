@@ -1,5 +1,6 @@
-use bitcoin::Network;
-use block_events::api::BlockEvent;
+use anyhow::Ok;
+use bitcoin::{blockdata::block, Network};
+use block_events::{api::BlockEvent, http::HttpClient};
 use clap::{ArgGroup, Parser, Subcommand};
 use futures_util::{pin_mut, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -66,14 +67,15 @@ async fn main() -> anyhow::Result<()> {
 
     // build the url by the network argument
     let url = url::Url::parse(&match cli.network {
-        Network::Bitcoin => "wss://mempool.space/api/v1/ws".to_string(),
-        Network::Regtest => "ws://localhost:8999/api/v1/ws".to_string(),
-        network => format!("wss://mempool.space/{}/api/v1/ws", network),
+        Network::Bitcoin => "mempool.space/api/v1".to_string(),
+        Network::Regtest => "localhost:8999/api/v1".to_string(),
+        network => format!("mempool.space/{}/api/v1", network),
     })
     .unwrap();
 
     // async fetch the data stream through the lib
-    let block_events = block_events::websocket::subscribe_to_blocks(&url).await?;
+    // let block_events = block_events::websocket::subscribe_to_blocks(&url).await?;
+    let block_events = block_events::subscribe_to_blocks(&url, Some(2)).await?;
 
     // consume and execute the code (current matching and printing) in async manner for each new block-event
     pin_mut!(block_events);
@@ -94,4 +96,22 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     Ok(())
+
+    // let url = url::Url::parse(&match cli.network {
+    //     Network::Bitcoin => "http://mempool.space/api".to_string(),
+    //     Network::Regtest => "http://localhost:8999/api/v1".to_string(),
+    //     network => format!("http://mempool.space/{}/api", network),
+    // })
+    // .unwrap();
+
+    // let http = HttpClient::new(&url, 4);
+    // for i in 1..10 {
+    //     let tip = http._get_height().await.unwrap();
+    //     let block_hash = http._get_block_height(i).await.unwrap();
+
+    //     println!("[/blocks/tip/height] {}", tip);
+    //     println!("[/block-height/{}] {}", i, &block_hash);
+    // }
+
+    // Ok(())
 }
