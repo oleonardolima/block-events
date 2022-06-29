@@ -1,11 +1,18 @@
-use bitcoin::{Address, BlockHash};
+use bitcoin::{Address, BlockHash, TxMerkleNode};
 
-#[derive(serde::Deserialize, Clone, Debug, Copy)]
+#[derive(serde::Deserialize, Clone, Debug, Copy, From)]
 pub struct BlockExtended {
-    pub height: u32,
-    pub timestamp: u32,
     pub id: BlockHash,
-    pub previousblockhash: BlockHash,
+    pub height: u32,
+    pub version: u32,
+    #[serde(alias = "previousblockhash")]
+    pub prev_blockhash: BlockHash,
+    pub merkle_root: TxMerkleNode,
+    #[serde(alias = "timestamp")]
+    pub time: u32,
+    pub bits: u32,
+    pub nonce: u32,
+    // add new fields if needed
 }
 
 #[derive(serde::Deserialize, Debug)]

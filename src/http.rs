@@ -4,7 +4,7 @@ use url::Url;
 
 use crate::api::BlockExtended;
 
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct HttpClient {
     url: String,
     client: Client,

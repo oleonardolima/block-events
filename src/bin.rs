@@ -1,5 +1,7 @@
+use std::str::FromStr;
+
 use anyhow::Ok;
-use bitcoin::{blockdata::block, Network};
+use bitcoin::{blockdata::block, BlockHash, Network};
 use block_events::{api::BlockEvent, http::HttpClient};
 use clap::{ArgGroup, Parser, Subcommand};
 use futures_util::{pin_mut, StreamExt};
@@ -74,88 +76,34 @@ async fn main() -> anyhow::Result<()> {
     .unwrap();
 
     // async fetch the data stream through the lib
-    // let block_events = block_events::websocket::subscribe_to_blocks(&url).await?;
+    let block_events = block_events::subscribe_to_blocks(
+        &url,
+        Some((
+            1,
+            BlockHash::from_str("33e3a0e68a2023474bca48b1fa5127a568203957c252c757076fe37460f05261")
+                .unwrap(),
+        )),
+    )
+    .await?;
 
     // consume and execute the code (current matching and printing) in async manner for each new block-event
-    // pin_mut!(block_events);
-    // while let Some(block_event) = block_events.next().await {
-    //     match block_event {
-    //         BlockEvent::Connected(block) => {
-    //             println!("Connected BlockEvent: {:#?}", block);
-    //         }
-    //         BlockEvent::Disconnected((height, block_hash)) => {
-    //             println!(
-    //                 "Disconnected BlockEvent: [height {:#?}] [block_hash: {:#?}]",
-    //                 height, block_hash
-    //             );
-    //         }
-    //         BlockEvent::Error() => {
-    //             eprint!("ERROR BlockEvent: received an error from the block-events stream");
-    //         }
-    //     }
-    // }
-
-    // async fetch the data stream through the lib
-    let events = block_events::subscribe_to_blocks(&url, Some(1)).await;
-
-    let prev = events.0.unwrap().unwrap();
-    let new = events.1.unwrap();
-
-    // consume and execute the code (current matching and printing) in async manner for each new block-event
-    pin_mut!(prev);
-    while let Some(prev) = prev.next().await {
-        match prev {
-            BlockEvent::Connected(block) => {
-                println!("Connected BlockEvent: {:#?}", block);
-            }
-            BlockEvent::Disconnected((height, block_hash)) => {
-                println!(
-                    "Disconnected BlockEvent: [height {:#?}] [block_hash: {:#?}]",
-                    height, block_hash
-                );
-            }
-            BlockEvent::Error() => {
-                eprint!("ERROR BlockEvent: received an error from the block-events stream");
-            }
-        }
+    pin_mut!(block_events);
+    while let Some(block_event) = block_events.next().await {
+        println!("BlockExtended: {:#?}", block_event)
+        // match block_event {
+        //     BlockEvent::Connected(block) => {
+        //         println!("Connected BlockEvent: {:#?}", block);
+        //     }
+        //     BlockEvent::Disconnected((height, block_hash)) => {
+        //         println!(
+        //             "Disconnected BlockEvent: [height {:#?}] [block_hash: {:#?}]",
+        //             height, block_hash
+        //         );
+        //     }
+        //     BlockEvent::Error() => {
+        //         eprint!("ERROR BlockEvent: received an error from the block-events stream");
+        //     }
+        // }
     }
-
-    // consume and execute the code (current matching and printing) in async manner for each new block-event
-    pin_mut!(new);
-    while let Some(new) = new.next().await {
-        match new {
-            BlockEvent::Connected(block) => {
-                println!("Connected BlockEvent: {:#?}", block);
-            }
-            BlockEvent::Disconnected((height, block_hash)) => {
-                println!(
-                    "Disconnected BlockEvent: [height {:#?}] [block_hash: {:#?}]",
-                    height, block_hash
-                );
-            }
-            BlockEvent::Error() => {
-                eprint!("ERROR BlockEvent: received an error from the block-events stream");
-            }
-        }
-    }
-
     Ok(())
-
-    // let url = url::Url::parse(&match cli.network {
-    //     Network::Bitcoin => "http://mempool.space/api".to_string(),
-    //     Network::Regtest => "http://localhost:8999/api/v1".to_string(),
-    //     network => format!("http://mempool.space/{}/api", network),
-    // })
-    // .unwrap();
-
-    // let http = HttpClient::new(&url, 4);
-    // for i in 1..10 {
-    //     let tip = http._get_height().await.unwrap();
-    //     let block_hash = http._get_block_height(i).await.unwrap();
-
-    //     println!("[/blocks/tip/height] {}", tip);
-    //     println!("[/block-height/{}] {}", i, &block_hash);
-    // }
-
-    // Ok(())
 }

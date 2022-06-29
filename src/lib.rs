@@ -1,82 +1,71 @@
-pub mod api;
-pub mod http;
-pub mod websocket;
+mod api;
+mod http;
+mod websocket;
 
 use std::pin::Pin;
+use std::time::Duration;
 
-use api::BlockEvent;
+use api::{BlockEvent, BlockExtended};
 
 use anyhow::{anyhow, Ok};
-use async_stream::{stream, try_stream};
-use bitcoin::Block;
-use futures_util::{pin_mut, stream::Stream};
+use async_stream::stream;
+use bitcoin::{BlockHash, BlockHeader};
+use futures_util::stream::Stream;
+use tokio::time::Instant;
 use tokio_stream::StreamExt;
 use url::Url;
 
+const DEFAULT_CONCURRENT_REQUESTS: u8 = 4;
+
 pub async fn subscribe_to_blocks(
     url: &Url,
-    height: Option<u32>,
-) -> (
-    Option<anyhow::Result<impl Stream<Item = BlockEvent>>>,
-    anyhow::Result<impl Stream<Item = BlockEvent>>,
-) {
-    log::debug!("[height.is_none] {:?}", height.is_none());
-
+    checkpoint: Option<(u32, BlockHash)>,
+) -> anyhow::Result<Pin<Box<dyn Stream<Item = BlockExtended>>>> {
     // TODO: (@leonardo.lima) It's needed to infer the tls security from network, or feature ?
     let ws_url = &url::Url::parse(format!("ws://{}/ws", url).as_str()).unwrap();
     let http_url = &url::Url::parse(format!("http://{}", url).as_str()).unwrap();
 
-    match height {
-        Some(height) => {
-            // let prev_blocks = fetch_previous_blocks(http_url, height).await?;
-            // let new_blocks = websocket::subscribe_to_blocks(ws_url).await?;
-
-            // pin_mut!(prev_blocks);
-            // pin_mut!(new_blocks);
-
-            // let stream = stream! {
-            //     while let Some(prev_block) = prev_blocks.next().await {
-            //         yield prev_block.clone();
-            //     }
-
-            //     while let Some(new_block) = new_blocks.next().await {
-            //         yield new_block.clone();
-            //     }
-            // };
-            // Ok(stream)
-
-            let prev_blocks = fetch_previous_blocks(http_url, height).await;
-            let new_blocks = websocket::subscribe_to_blocks(ws_url).await;
-            return (Some(prev_blocks), new_blocks);
+    match checkpoint {
+        Some(checkpoint) => {
+            let prev_blocks = fetch_previous_blocks(http_url, checkpoint).await?;
+            let new_blocks = websocket::subscribe_to_blocks(ws_url).await?;
+            // FIXME: This should filter for duplicated blocks
+            Ok(Box::pin(prev_blocks.chain(new_blocks)))
         }
-        _ => return (None, websocket::subscribe_to_blocks(ws_url).await),
+        _ => Ok(Box::pin(websocket::subscribe_to_blocks(ws_url).await?)),
     }
 }
 
+// FIXME: this fails when checkpoint is genesis block as it does not have a previousblockhash field
 pub async fn fetch_previous_blocks(
     url: &Url,
-    mut height: u32,
-) -> anyhow::Result<impl Stream<Item = BlockEvent>> {
-    // TODO: (@leonardo.lima) Move the concurrency for an environment variable
-    let http_client = http::HttpClient::new(url, 4);
-    let mut curr_tip = http_client._get_height().await.unwrap();
+    checkpoint: (u32, BlockHash),
+) -> anyhow::Result<impl Stream<Item = BlockExtended>> {
+    let client = http::HttpClient::new(url, DEFAULT_CONCURRENT_REQUESTS);
+    let (ckpt_height, ckpt_hash) = checkpoint;
 
-    log::debug!("[curr_tip {}]", &curr_tip);
-    log::debug!("[height {}]", &height);
+    if ckpt_hash != client._get_block_height(ckpt_height).await? {
+        return Err(anyhow!(
+            "The checkpoint passed is invalid, it should exist in the blockchain."
+        ));
+    }
 
+    let mut tip = client._get_height().await?;
+    let mut height = ckpt_height;
+
+    let mut interval = Instant::now(); // should try to update the tip every 5 minutes.
     let stream = stream! {
-        while height <= curr_tip {
-            let block_hash = http_client._get_block_height(height).await.unwrap();
-            let block = http_client._get_block(block_hash).await.unwrap();
+        while height <= tip {
+            let hash = client._get_block_height(height).await.unwrap();
+            let block = client._get_block(hash).await.unwrap();
 
-            log::debug!("[curr_tip {}]", &curr_tip);
-            log::debug!("[height {}]", &height);
-            log::debug!("[block {:#?}]", &block);
-
-            // TODO: (@leonardo.lima) The update in current tip should have some time in between, and not at every iteration
-            curr_tip = http_client._get_height().await.unwrap();
             height += 1;
-            yield BlockEvent::Connected(block);
+
+            if interval.elapsed() >= Duration::from_secs(300) {
+                interval = Instant::now();
+                tip = client._get_height().await.unwrap();
+            }
+            yield block;
         }
     };
     Ok(stream)
