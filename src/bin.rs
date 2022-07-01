@@ -1,8 +1,5 @@
-use std::str::FromStr;
-
 use anyhow::Ok;
-use bitcoin::{blockdata::block, BlockHash, Network};
-use block_events::{api::BlockEvent, http::HttpClient};
+use bitcoin::Network;
 use clap::{ArgGroup, Parser, Subcommand};
 use futures_util::{pin_mut, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -76,15 +73,7 @@ async fn main() -> anyhow::Result<()> {
     .unwrap();
 
     // async fetch the data stream through the lib
-    let block_events = block_events::subscribe_to_blocks(
-        &url,
-        Some((
-            1,
-            BlockHash::from_str("33e3a0e68a2023474bca48b1fa5127a568203957c252c757076fe37460f05261")
-                .unwrap(),
-        )),
-    )
-    .await?;
+    let block_events = block_events::subscribe_to_blocks(&url, None).await?;
 
     // consume and execute the code (current matching and printing) in async manner for each new block-event
     pin_mut!(block_events);

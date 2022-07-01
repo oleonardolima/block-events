@@ -60,6 +60,7 @@ pub async fn subscribe_to_blocks(url: &Url) -> anyhow::Result<impl Stream<Item =
                                     continue
                                 }
                                 let res_msg: MempoolSpaceWebSocketMessage = serde_json::from_str(&text).unwrap();
+                                log::debug!("{:?}", res_msg.block);
                                 yield res_msg.block;
                             },
                             Message::Close(_) => {
