@@ -1,3 +1,15 @@
+// Block Events Library
+// Written in 2022 by Leonardo Lima <> and Lloyd Fournier <>
+//
+// This file is licensed under the Apache License, Version 2.0 <LICENSE-APACHE
+// or http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
+// You may not use this file except in accordance with one or both of these
+// licenses.
+
+//! WebSocket module for mempool.space
+//! It has functions to connect and create a new WebSocket client, and also subscribe for only new block events
+
 use crate::api::BlockExtended;
 
 use super::api::{
@@ -15,11 +27,17 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::{connect_async_tls_with_config, MaybeTlsStream, WebSocketStream};
 use url::Url;
 
+/// Create a new WebSocket client for given base url and initial message
+///
+/// It uses `tokio_tungestenite` crate and produces `WebSocketStream` to be handled and treated by caller
 async fn websocket_client(
-    url: &Url,
+    base_url: &Url,
     message: String,
 ) -> anyhow::Result<WebSocketStream<MaybeTlsStream<TcpStream>>> {
+    let url = url::Url::parse(format!("ws://{}/ws", base_url).as_str()).unwrap();
     log::info!("starting websocket handshake with url={}", url);
+
+    // TODO: (@leonardo.lima) It's needed to infer the tls security from network, or feature ?
     let (mut websocket_stream, websocket_response) =
         connect_async_tls_with_config(url, None, None).await?;
 
@@ -34,13 +52,16 @@ async fn websocket_client(
     Ok(websocket_stream)
 }
 
-pub async fn subscribe_to_blocks(url: &Url) -> anyhow::Result<impl Stream<Item = BlockExtended>> {
+/// Connects to mempool.space WebSocket client and listen to new messages producing a stream of [`BlockExtended`] candidates
+pub async fn subscribe_to_blocks(
+    base_url: &Url,
+) -> anyhow::Result<impl Stream<Item = BlockExtended>> {
     let init_message = serde_json::to_string(&build_websocket_request_message(
         &MempoolSpaceWebSocketRequestData::Blocks,
     ))
     .unwrap();
 
-    let mut ws_stream = websocket_client(url, init_message).await.unwrap();
+    let mut ws_stream = websocket_client(base_url, init_message).await.unwrap();
 
     // need to ping every so often to keep the websocket connection alive
     let mut pinger = tokio::time::interval(Duration::from_secs(60));
