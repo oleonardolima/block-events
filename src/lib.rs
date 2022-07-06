@@ -23,6 +23,48 @@
 //! please check out the repository, project proposal or reach out.
 //!
 //! # Examples
+//! ## Subscribe to all new block events for mempool.space
+//! ``` no_run
+//! use anyhow::{self, Ok};
+//! use futures_util::{pin_mut, StreamExt};
+//!
+//! #[tokio::main]
+//! async fn main() -> anyhow::Result<()> {
+//!     env_logger::init();
+//!
+//!     // for mempool.space regtest network
+//!     let base_url = "localhost:8999/testnet/api/v1";
+//!
+//!     // no checkpoint for this example, check the commented other one if interested.
+//!     // checkpoint for first BDK Taproot transaction on mainnet (base_url update needed)
+//!     // let checkpoint = (709635, bitcoin::BlockHash::from("00000000000000000001f9ee4f69cbc75ce61db5178175c2ad021fe1df5bad8f"));
+//!     let checkpoint = None;
+//!
+//!     // async fetch the block-events stream through the lib
+//!     let block_events = block_events::subscribe_to_blocks(base_url, checkpoint).await?;
+//!
+//!     // consume and execute your code (current only matching and printing) in async manner for each new block-event
+//!     pin_mut!(block_events);
+//!     while let Some(block_event) = block_events.next().await {
+//!         match block_event {
+//!             block_events::api::BlockEvent::Connected(block) => {
+//!                 println!(
+//!                     "[connected block][block_hash {:#?}][block_prev_hash {:#?}]",
+//!                     block.block_hash(),
+//!                     block.prev_blockhash
+//!                 );
+//!             }
+//!             block_events::api::BlockEvent::Disconnected((height, block_hash)) => {
+//!                 println!(
+//!                     "[disconnected block][height {:#?}][block_hash: {:#?}]",
+//!                     height, block_hash
+//!                 );
+//!             }
+//!         }
+//!     }
+//!     Ok(())
+//! }
+//! ```
 
 pub mod api;
 pub mod http;
@@ -133,7 +175,7 @@ impl BlockHeadersCache {
 /// Subscribe to a real-time stream of [`BlockEvent`], for all new blocks or starting from an optional checkpoint
 pub async fn subscribe_to_blocks(
     base_url: &str,
-    checkpoint: Option<(u64, BlockHash)>,
+    checkpoint: Option<(u32, BlockHash)>,
 ) -> anyhow::Result<Pin<Box<dyn Stream<Item = BlockEvent>>>> {
     let http_client = http::HttpClient::new(base_url, DEFAULT_CONCURRENT_REQUESTS);
 
@@ -216,7 +258,7 @@ async fn process_candidates(
 // FIXME: this fails when checkpoint is genesis block as it does not have a previousblockhash field
 pub async fn fetch_blocks(
     http_client: HttpClient,
-    checkpoint: (u64, BlockHash),
+    checkpoint: (u32, BlockHash),
 ) -> anyhow::Result<impl Stream<Item = BlockExtended>> {
     let (ckpt_height, ckpt_hash) = checkpoint;
 

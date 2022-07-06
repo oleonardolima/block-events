@@ -41,39 +41,42 @@ cargo install --path .
 cargo run -- data-stream --blocks
 
 # to use regtest, you need to pass it as a parameter
-cargo run -- --network testnet data-stream --blocks
+cargo run -- --base-url localhost:8999/testnet/api/v1 data-stream --blocks
 ```
 ### Subscribing and consuming new block events through the lib:
 ``` rust
 use anyhow::{self, Ok};
-use block_events::api::BlockEvent;
 use futures_util::{pin_mut, StreamExt};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
-    // for regtest network
-    let url = url::Url::parse("ws://localhost:8999/api/v1/ws").unwrap();
+    // for mempool.space regtest network
+    let base_url = "localhost:8999/testnet/api/v1";
 
-    // async fetch the data stream through the lib
-    let block_events = block_events::websocket::subscribe_to_blocks(&url).await?;
+    // no checkpoint for this example, check the other one if interested.
+    let checkpoint = None;
 
-    // consume and execute the code (current matching and printing) in async manner for each new block-event
+    // async fetch the block-events stream through the lib
+    let block_events = block_events::subscribe_to_blocks(base_url, checkpoint).await?;
+
+    // consume and execute your code (current only matching and printing) in async manner for each new block-event
     pin_mut!(block_events);
     while let Some(block_event) = block_events.next().await {
         match block_event {
-            BlockEvent::Connected(block) => {
-                println!("Connected BlockEvent: {:#?}", block);
-            }
-            BlockEvent::Disconnected((height, block_hash)) => {
+            block_events::api::BlockEvent::Connected(block) => {
                 println!(
-                    "Disconnected BlockEvent: [height {:#?}] [block_hash: {:#?}]",
-                    height, block_hash
+                    "[connected block][block_hash {:#?}][block_prev_hash {:#?}]",
+                    block.block_hash(),
+                    block.prev_blockhash
                 );
             }
-            BlockEvent::Error() => {
-                eprint!("ERROR BlockEvent: received an error from the block-events stream");
+            block_events::api::BlockEvent::Disconnected((height, block_hash)) => {
+                println!(
+                    "[disconnected block][height {:#?}][block_hash: {:#?}]",
+                    height, block_hash
+                );
             }
         }
     }

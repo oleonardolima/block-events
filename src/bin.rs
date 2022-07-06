@@ -1,5 +1,4 @@
 use anyhow::Ok;
-use block_events::api::BlockEvent;
 use clap::{ArgGroup, Parser, Subcommand};
 use futures_util::{pin_mut, StreamExt};
 use serde::{Deserialize, Serialize};

@@ -37,7 +37,7 @@ impl HttpClient {
     }
 
     /// Get current blockchain block height (the current tip height)
-    pub async fn _get_height(&self) -> anyhow::Result<u64> {
+    pub async fn _get_height(&self) -> anyhow::Result<u32> {
         let req = self
             .client
             .get(&format!("{}/blocks/tip/height", self.url))
@@ -48,7 +48,7 @@ impl HttpClient {
     }
 
     /// Get [`BlockHash`] from mempool.space, for given block height
-    pub async fn _get_block_height(&self, height: u64) -> anyhow::Result<BlockHash> {
+    pub async fn _get_block_height(&self, height: u32) -> anyhow::Result<BlockHash> {
         let req = self
             .client
             .get(&format!("{}/block-height/{}", self.url, height))
