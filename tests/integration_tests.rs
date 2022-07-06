@@ -385,17 +385,6 @@ async fn test_block_events_stream_with_checkpoint() {
     .await
     .unwrap();
 
-    // std::thread::sleep(delay);
-    // // generate 5 new blocks through bitcoind rpc-client
-    // let mut generated_blocks = VecDeque::from(
-    //     rpc_client
-    //         .generate_to_address(3, &rpc_client.get_new_address(None, None).unwrap())
-    //         .unwrap(),
-    // );
-
-    // insert the first blocks starting from checkpoint
-    // first_blocks.append(&mut generated_blocks);
-
     // consume new blocks from block-events stream
     pin_mut!(block_events);
     while !first_blocks.is_empty() {
@@ -417,4 +406,101 @@ async fn test_block_events_stream_with_checkpoint() {
 
 #[tokio::test]
 #[serial]
-async fn test_block_events_stream_with_reorg() {}
+async fn test_block_events_stream_with_reorg() {
+    let _ = env_logger::try_init();
+    let delay = Duration::from_millis(5000);
+
+    let docker = clients::Cli::docker();
+    let client = MempoolTestClient::default();
+
+    let _mariadb = docker.run(client.mariadb_database);
+
+    std::thread::sleep(delay); // there is some delay between running the docker and the port being really available
+    let mempool = docker.run(client.mempool_backend);
+
+    // get block-events stream
+    let block_events = block_events::subscribe_to_blocks(
+        build_base_url(mempool.get_host_port_ipv4(mempool.get_host_port_ipv4(8999))).as_str(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    // initiate bitcoind client
+    let rpc_client = &client.bitcoind.client;
+
+    // generate 5 new blocks through bitcoind rpc-client
+    let generated_blocks = VecDeque::from(
+        rpc_client
+            .generate_to_address(5, &rpc_client.get_new_address(None, None).unwrap())
+            .unwrap(),
+    );
+    let mut new_blocks = generated_blocks.clone();
+
+    // consume new blocks from block-events stream
+    pin_mut!(block_events);
+    while !new_blocks.is_empty() {
+        let block_hash = new_blocks.pop_front().unwrap();
+        let block_event = block_events.next().await.unwrap();
+
+        // should produce a BlockEvent::Connected result for each block event
+        assert!(matches!(block_event, BlockEvent::Connected { .. }));
+
+        // should parse the BlockEvent::Connected successfully
+        let connected_block = match block_event {
+            BlockEvent::Connected(block) => block,
+            _ => unreachable!("This test is supposed to have only connected blocks, please check why it's generating disconnected and/or errors at the moment."),
+        };
+        assert_eq!(block_hash.to_owned(), connected_block.block_hash());
+    }
+
+    // invalidate last 2 blocks
+    let mut invalidated_blocks = VecDeque::new();
+    for block in generated_blocks.range(3..) {
+        rpc_client.invalidate_block(block).unwrap();
+        invalidated_blocks.push_front(block);
+    }
+    log::debug!("invalidated_blocks {:?}", invalidated_blocks);
+
+    // generate 2 new blocks
+    let mut new_blocks = VecDeque::from(
+        rpc_client
+            .generate_to_address(3, &rpc_client.get_new_address(None, None).unwrap())
+            .unwrap(),
+    );
+    log::debug!("new_blocks {:?}", new_blocks);
+
+    // should disconnect invalidated blocks
+    while !invalidated_blocks.is_empty() {
+        log::info!("len {:?}", invalidated_blocks.len());
+        let invalidated = invalidated_blocks.pop_front().unwrap();
+        let block_event = block_events.next().await.unwrap();
+
+        log::info!("{:?}", block_event);
+        // should produce a BlockEvent::Connected result for each block event
+        assert!(matches!(block_event, BlockEvent::Disconnected(..)));
+
+        // should parse the BlockEvent::Connected successfully
+        let disconnected = match block_event {
+            BlockEvent::Disconnected((_, hash)) => hash,
+            _ => unreachable!("This test is supposed to have only connected blocks, please check why it's generating disconnected and/or errors at the moment."),
+        };
+        assert_eq!(invalidated.to_owned(), disconnected);
+    }
+
+    // should connect the new created blocks
+    while !new_blocks.is_empty() {
+        let new_block = new_blocks.pop_front().unwrap();
+        let block_event = block_events.next().await.unwrap();
+
+        // should produce a BlockEvent::Connected result for each block event
+        assert!(matches!(block_event, BlockEvent::Connected { .. }));
+
+        // should parse the BlockEvent::Connected successfully
+        let connected = match block_event {
+            BlockEvent::Connected(block) => block.block_hash(),
+            _ => unreachable!("This test is supposed to have only connected blocks, please check why it's generating disconnected and/or errors at the moment."),
+        };
+        assert_eq!(new_block.to_owned(), connected);
+    }
+}

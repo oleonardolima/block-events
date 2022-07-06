@@ -76,11 +76,12 @@ async fn main() -> anyhow::Result<()> {
     // async fetch the data stream through the lib
     let block_events = block_events::subscribe_to_blocks(
         base_url.as_str(),
-        Some((
-            102,
-            BlockHash::from_str("3d3ab0efd0f8f0eb047d9e77f7ad7c6b6791c896bd8a21437da555670f799e08")
-                .unwrap(),
-        )),
+        // Some((
+        //     102,
+        //     BlockHash::from_str("3d3ab0efd0f8f0eb047d9e77f7ad7c6b6791c896bd8a21437da555670f799e08")
+        //         .unwrap(),
+        // )),
+        None,
     )
     .await?;
 

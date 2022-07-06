@@ -85,12 +85,13 @@ impl BlockHeadersCache {
         let mut common_ancestor = branch_candidate;
         let mut fork_branch: VecDeque<BlockExtended> = VecDeque::new();
         while !self.active_headers.contains_key(&common_ancestor.id) {
-            log::debug!("{:?}", common_ancestor);
             fork_branch.push_back(common_ancestor);
             common_ancestor = http_client
                 ._get_block(common_ancestor.prev_blockhash)
                 .await?;
         }
+        log::debug!("[common_ancestor] {:?}", common_ancestor);
+        log::debug!("[fork_branch] {:?}", fork_branch);
         Ok((common_ancestor, fork_branch))
     }
 
@@ -108,8 +109,10 @@ impl BlockHeadersCache {
             all_disconnected.push_back(disconnected_header);
             self.stale_headers
                 .insert(disconnected_hash, disconnected_header);
-            self.tip = block.id;
+            self.tip = disconnected_header.prev_blockhash;
         }
+        log::info!("[all_disconnected] {:?}", all_disconnected);
+        log::info!("[self.tip] {:?}", self.tip);
         Ok(all_disconnected)
     }
 
@@ -119,13 +122,15 @@ impl BlockHeadersCache {
     pub fn apply_fork_chain(
         &mut self,
         mut fork_branch: VecDeque<BlockExtended>,
-    ) -> anyhow::Result<BlockHash> {
+    ) -> anyhow::Result<(BlockHash, VecDeque<BlockExtended>)> {
+        let mut connected = VecDeque::new();
         while !fork_branch.is_empty() {
             let block = fork_branch.pop_front().unwrap();
+            connected.push_back(block);
             self.active_headers.insert(block.id, block);
             self.tip = block.id;
         }
-        Ok(self.tip)
+        Ok((self.tip, connected))
     }
 }
 
@@ -135,14 +140,17 @@ pub async fn subscribe_to_blocks(
     checkpoint: Option<(u64, BlockHash)>,
 ) -> anyhow::Result<Pin<Box<dyn Stream<Item = BlockEvent>>>> {
     let http_client = http::HttpClient::new(base_url, DEFAULT_CONCURRENT_REQUESTS);
+
+    let current_tip = match checkpoint {
+        Some((height, _)) => height - 1,
+        _ => http_client._get_height().await?,
+    };
+
     let cache = BlockHeadersCache {
-        tip: http_client
-            ._get_block_height(http_client._get_height().await?)
-            .await?,
+        tip: http_client._get_block_height(current_tip).await?,
         active_headers: HashMap::new(),
         stale_headers: HashMap::new(),
     };
-    log::debug!("[BlockHeadersCache] {:?}", cache);
 
     match checkpoint {
         Some(checkpoint) => {
@@ -193,10 +201,16 @@ async fn process_candidates(
             for disconnected in cache.rollback_active_chain(common_ancestor).await.unwrap().iter() {
                 yield BlockEvent::Disconnected((disconnected.height, disconnected.id));
             }
+            // TODO: (@leonardo.lima) fix order of return
 
             // iterate over forked chain candidates
             // update [`Cache`] active_headers field with candidates
-            let _ = cache.apply_fork_chain(fork_chain);
+            let (_, connected) = cache.apply_fork_chain(fork_chain).unwrap();
+            for block in connected {
+                yield BlockEvent::Connected(BlockHeader::from(block.clone()));
+            }
+            // TODO: (@leonardo.lima fix order of return)
+
         }
     };
     Ok(stream)
@@ -219,9 +233,6 @@ pub async fn fetch_blocks(
     let mut tip = http_client._get_height().await?;
     let mut height = ckpt_height;
 
-    log::debug!("tip: {}", tip);
-    log::debug!("ckpt: {:?}", checkpoint);
-
     let mut interval = Instant::now(); // it should try to update the tip every 5 minutes.
     let stream = stream! {
         while height <= tip {
@@ -229,8 +240,6 @@ pub async fn fetch_blocks(
             let block = http_client._get_block(hash).await.unwrap();
 
             height += 1;
-            log::debug!("height: {}", height);
-            log::debug!("block: {:?}", block);
 
             if interval.elapsed() >= Duration::from_secs(300) {
                 interval = Instant::now();
