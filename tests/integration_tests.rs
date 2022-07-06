@@ -460,7 +460,6 @@ async fn test_block_events_stream_with_reorg() {
         rpc_client.invalidate_block(block).unwrap();
         invalidated_blocks.push_front(block);
     }
-    log::debug!("invalidated_blocks {:?}", invalidated_blocks);
 
     // generate 2 new blocks
     let mut new_blocks = VecDeque::from(
@@ -468,15 +467,12 @@ async fn test_block_events_stream_with_reorg() {
             .generate_to_address(3, &rpc_client.get_new_address(None, None).unwrap())
             .unwrap(),
     );
-    log::debug!("new_blocks {:?}", new_blocks);
 
     // should disconnect invalidated blocks
     while !invalidated_blocks.is_empty() {
-        log::info!("len {:?}", invalidated_blocks.len());
-        let invalidated = invalidated_blocks.pop_front().unwrap();
+        let invalidated = invalidated_blocks.pop_back().unwrap();
         let block_event = block_events.next().await.unwrap();
 
-        log::info!("{:?}", block_event);
         // should produce a BlockEvent::Connected result for each block event
         assert!(matches!(block_event, BlockEvent::Disconnected(..)));
 

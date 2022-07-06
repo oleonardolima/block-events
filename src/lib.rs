@@ -90,35 +90,30 @@ impl BlockHeadersCache {
                 ._get_block(common_ancestor.prev_blockhash)
                 .await?;
         }
-        log::debug!("[common_ancestor] {:?}", common_ancestor);
-        log::debug!("[fork_branch] {:?}", fork_branch);
         Ok((common_ancestor, fork_branch))
     }
 
-    /// Rollback active chain in [`BlockHeadersCache`] to passed block
+    /// Rollback active chain in [`BlockHeadersCache`] back to passed block
     ///
     /// Returns all stale, and to be disconnected blocks as a `VecDeque<BlockExtended>`
     pub async fn rollback_active_chain(
         &mut self,
         block: BlockExtended,
     ) -> anyhow::Result<VecDeque<BlockExtended>> {
-        let mut all_disconnected = VecDeque::new();
+        let mut disconnected = VecDeque::new();
         while block.id != self.tip {
-            let (disconnected_hash, disconnected_header) =
-                self.active_headers.remove_entry(&self.tip).unwrap();
-            all_disconnected.push_back(disconnected_header);
-            self.stale_headers
-                .insert(disconnected_hash, disconnected_header);
-            self.tip = disconnected_header.prev_blockhash;
+            let (stale_hash, stale_header) = self.active_headers.remove_entry(&self.tip).unwrap();
+            disconnected.push_back(stale_header);
+
+            self.stale_headers.insert(stale_hash, stale_header);
+            self.tip = stale_header.prev_blockhash;
         }
-        log::info!("[all_disconnected] {:?}", all_disconnected);
-        log::info!("[self.tip] {:?}", self.tip);
-        Ok(all_disconnected)
+        Ok(disconnected)
     }
 
     /// Apply fork branch to active chain, and update tip to new `BlockExtended`
     ///
-    /// Returns the new tip `BlockHash`
+    /// Returns the new tip `BlockHash`, and the connected blocks as a `VecDeque<BlockExtended>`
     pub fn apply_fork_chain(
         &mut self,
         mut fork_branch: VecDeque<BlockExtended>,
@@ -127,6 +122,7 @@ impl BlockHeadersCache {
         while !fork_branch.is_empty() {
             let block = fork_branch.pop_front().unwrap();
             connected.push_back(block);
+
             self.active_headers.insert(block.id, block);
             self.tip = block.id;
         }
@@ -198,19 +194,19 @@ async fn process_candidates(
 
             // rollback current active chain, moving blocks to staled field
             // yields BlockEvent::Disconnected((u32, BlockHash))
-            for disconnected in cache.rollback_active_chain(common_ancestor).await.unwrap().iter() {
-                yield BlockEvent::Disconnected((disconnected.height, disconnected.id));
+            let mut disconnected: VecDeque<BlockExtended> = cache.rollback_active_chain(common_ancestor).await.unwrap();
+            while !disconnected.is_empty() {
+                let block: BlockExtended = disconnected.pop_back().unwrap();
+                yield BlockEvent::Disconnected((block.height, block.id));
             }
-            // TODO: (@leonardo.lima) fix order of return
 
             // iterate over forked chain candidates
             // update [`Cache`] active_headers field with candidates
-            let (_, connected) = cache.apply_fork_chain(fork_chain).unwrap();
-            for block in connected {
+            let (_, mut connected) = cache.apply_fork_chain(fork_chain).unwrap();
+            while !connected.is_empty() {
+                let block = connected.pop_back().unwrap();
                 yield BlockEvent::Connected(BlockHeader::from(block.clone()));
             }
-            // TODO: (@leonardo.lima fix order of return)
-
         }
     };
     Ok(stream)
