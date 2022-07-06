@@ -19,6 +19,7 @@ pub struct BlockExtended {
     pub id: BlockHash,
     pub height: u32,
     pub version: i32,
+    // none for genesis block
     #[serde(alias = "previousblockhash")]
     pub prev_blockhash: BlockHash,
     pub merkle_root: TxMerkleNode,

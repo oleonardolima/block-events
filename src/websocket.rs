@@ -25,13 +25,12 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::{connect_async_tls_with_config, MaybeTlsStream, WebSocketStream};
-use url::Url;
 
 /// Create a new WebSocket client for given base url and initial message
 ///
 /// It uses `tokio_tungestenite` crate and produces `WebSocketStream` to be handled and treated by caller
 async fn websocket_client(
-    base_url: &Url,
+    base_url: &str,
     message: String,
 ) -> anyhow::Result<WebSocketStream<MaybeTlsStream<TcpStream>>> {
     let url = url::Url::parse(format!("ws://{}/ws", base_url).as_str()).unwrap();
@@ -54,14 +53,14 @@ async fn websocket_client(
 
 /// Connects to mempool.space WebSocket client and listen to new messages producing a stream of [`BlockExtended`] candidates
 pub async fn subscribe_to_blocks(
-    base_url: &Url,
+    base_url: &str,
 ) -> anyhow::Result<impl Stream<Item = BlockExtended>> {
     let init_message = serde_json::to_string(&build_websocket_request_message(
         &MempoolSpaceWebSocketRequestData::Blocks,
     ))
     .unwrap();
 
-    let mut ws_stream = websocket_client(base_url, init_message).await.unwrap();
+    let mut ws_stream = websocket_client(base_url, init_message).await?;
 
     // need to ping every so often to keep the websocket connection alive
     let mut pinger = tokio::time::interval(Duration::from_secs(60));
@@ -81,7 +80,7 @@ pub async fn subscribe_to_blocks(
                                     continue
                                 }
                                 let res_msg: MempoolSpaceWebSocketMessage = serde_json::from_str(&text).unwrap();
-                                log::debug!("{:?}", res_msg.block);
+                                log::debug!("[res_msg.block] {:?}", res_msg.block);
                                 yield res_msg.block;
                             },
                             Message::Close(_) => {

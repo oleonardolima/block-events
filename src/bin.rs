@@ -1,5 +1,7 @@
+use std::str::FromStr;
+
 use anyhow::Ok;
-use bitcoin::Network;
+use bitcoin::{Address, BlockHash, Network};
 use clap::{ArgGroup, Parser, Subcommand};
 use futures_util::{pin_mut, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -65,15 +67,22 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     // build the url by the network argument
-    let url = url::Url::parse(&match cli.network {
+    let base_url = &match cli.network {
         Network::Bitcoin => "mempool.space/api/v1".to_string(),
-        Network::Regtest => "localhost:8999/api/v1".to_string(),
+        Network::Regtest => "127.0.0.1:8999/api/v1".to_string(),
         network => format!("mempool.space/{}/api/v1", network),
-    })
-    .unwrap();
+    };
 
     // async fetch the data stream through the lib
-    let block_events = block_events::subscribe_to_blocks(&url, None).await?;
+    let block_events = block_events::subscribe_to_blocks(
+        base_url.as_str(),
+        Some((
+            102,
+            BlockHash::from_str("3d3ab0efd0f8f0eb047d9e77f7ad7c6b6791c896bd8a21437da555670f799e08")
+                .unwrap(),
+        )),
+    )
+    .await?;
 
     // consume and execute the code (current matching and printing) in async manner for each new block-event
     pin_mut!(block_events);

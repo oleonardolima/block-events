@@ -1,9 +1,12 @@
+use bitcoin::BlockHash;
 use bitcoind::{bitcoincore_rpc::RpcApi, BitcoinD};
 use block_events::{api::BlockEvent, http::HttpClient, websocket};
 use futures_util::{pin_mut, StreamExt};
 use serial_test::serial;
-use std::{collections::VecDeque, time::Duration};
+use std::{collections::VecDeque, ops::Deref, time::Duration};
 use testcontainers::{clients, images, images::generic::GenericImage, RunnableImage};
+
+const DEFAULT_CONCURRENT_REQUESTS: u8 = 4;
 
 const HOST_IP: &str = "127.0.0.1";
 
@@ -52,8 +55,6 @@ impl MempoolTestClient {
         conf.args.push(rpc_bind.as_str());
         conf.args.push("-txindex");
         conf.args.push("-server");
-
-        log::debug!("[bitcoind::Conf {:?}]", conf);
 
         let bitcoind = BitcoinD::with_conf(&bitcoind_exe, &conf).unwrap();
 
@@ -147,24 +148,13 @@ impl Default for MempoolTestClient {
     }
 }
 
-#[tokio::test]
-async fn should_return_error_for_invalid_websocket_url() {
-    let ws_url = url::Url::parse(format!("ws://{}:{}/api/v1/ws", HOST_IP, 8999).as_str()).unwrap();
-
-    // should return connection Err.
-    let block_events = websocket::subscribe_to_blocks(&ws_url).await;
-
-    assert!(block_events.is_err());
-
-    assert_eq!(
-        block_events.err().unwrap().to_string(),
-        "IO error: Connection refused (os error 61)"
-    );
+fn build_base_url(mapped_port: u16) -> String {
+    format!("{}:{}/api/v1", HOST_IP, mapped_port)
 }
 
 #[tokio::test]
 #[serial]
-async fn should_return_stream_of_block_events() {
+async fn test_fetch_tip_height() {
     let _ = env_logger::try_init();
     let delay = Duration::from_millis(5000);
 
@@ -172,88 +162,17 @@ async fn should_return_stream_of_block_events() {
     let client = MempoolTestClient::default();
 
     let _mariadb = docker.run(client.mariadb_database);
-    std::thread::sleep(delay); // there is some delay between running the docker and the port being really available
 
+    std::thread::sleep(delay); // there is some delay between running the docker and the port being really available
     let mempool = docker.run(client.mempool_backend);
 
-    let ws_url = url::Url::parse(
-        format!(
-            "ws://{}:{}/api/v1/ws",
-            HOST_IP,
-            mempool.get_host_port_ipv4(8999)
-        )
-        .as_str(),
-    )
-    .unwrap();
-
-    // subscribe to websocket (mempool/backend docker container), generate `block_num` new blocks
-    // check for all generate blocks being consumed and listened by websocket client
-
-    // get block-events stream
-    let block_events = websocket::subscribe_to_blocks(&ws_url).await.unwrap();
-
-    // generate `block_num==5` new blocks through bitcoind rpc-client
     let rpc_client = &client.bitcoind.client;
-    let mut generated_blocks = VecDeque::from(
-        rpc_client
-            .generate_to_address(5, &rpc_client.get_new_address(None, None).unwrap())
-            .unwrap(),
+    let http_client = HttpClient::new(
+        build_base_url(mempool.get_host_port_ipv4(8999)).as_str(),
+        DEFAULT_CONCURRENT_REQUESTS,
     );
-    log::debug!("[gen_block_hashes {:?}]", generated_blocks);
 
-    // consume new blocks from block-events stream
-    pin_mut!(block_events);
-    while !generated_blocks.is_empty() {
-        let block_hash = generated_blocks.pop_front();
-        let block_event = block_events.next().await.unwrap();
-
-        // should produce a BlockEvent::Connected result for each block event
-        assert!(matches!(block_event, BlockEvent::Connected { .. }));
-
-        // should parse the BlockEvent::Connected successfully
-        let connected_block = match block_event {
-            BlockEvent::Connected(block) => block,
-            _ => unreachable!("This test is supposed to have only connected blocks, please check why it's generating disconnected and/or errors at the moment."),
-        };
-
-        log::debug!(
-            "[gen_block_hash {}] [con_block_hash {}]",
-            block_hash.unwrap().to_owned(),
-            connected_block.id
-        );
-        assert_eq!(block_hash.unwrap().to_owned(), connected_block.id);
-    }
-}
-
-#[tokio::test]
-#[serial]
-async fn should_return_tip_height() {
-    let _ = env_logger::try_init();
-    let delay = Duration::from_millis(5000);
-
-    let docker = clients::Cli::docker();
-    let client = MempoolTestClient::default();
-
-    let _mariadb = docker.run(client.mariadb_database);
-    std::thread::sleep(delay); // there is some delay between running the docker and the port being really available
-
-    let mempool = docker.run(client.mempool_backend);
-
-    let concurrency = 4;
-    let base_url = url::Url::parse(
-        format!(
-            "http://{}:{}/api/v1",
-            HOST_IP,
-            mempool.get_host_port_ipv4(8999)
-        )
-        .as_str(),
-    )
-    .unwrap();
-
-    // generate `block_num==5` new blocks through bitcoind rpc-client
-    let rpc_client = &client.bitcoind.client;
-    let http_client = HttpClient::new(&base_url, concurrency);
-
+    // should return the current tip height
     for i in 0..10 {
         let tip = http_client._get_height().await.unwrap();
         assert_eq!(i, tip);
@@ -266,7 +185,41 @@ async fn should_return_tip_height() {
 
 #[tokio::test]
 #[serial]
-async fn should_return_block_hash_for_height() {
+async fn test_fetch_block_hash_by_height() {
+    let _ = env_logger::try_init();
+    let delay = Duration::from_millis(5000);
+
+    let docker = clients::Cli::docker();
+    let client = MempoolTestClient::default();
+
+    let _mariadb = docker.run(client.mariadb_database);
+
+    std::thread::sleep(delay); // there is some delay between running the docker and the port being really available
+    let mempool = docker.run(client.mempool_backend);
+
+    let rpc_client = &client.bitcoind.client;
+    let http_client = HttpClient::new(
+        build_base_url(mempool.get_host_port_ipv4(8999)).as_str(),
+        DEFAULT_CONCURRENT_REQUESTS,
+    );
+
+    // should return an error if there is no block created yet for given height
+    assert!(http_client._get_block_height(100).await.is_err());
+
+    // should return block hash for existing block by height
+    for i in 1..10 {
+        let gen_hash = rpc_client
+            .generate_to_address(1, &rpc_client.get_new_address(None, None).unwrap())
+            .unwrap();
+
+        let res_hash = http_client._get_block_height(i).await.unwrap();
+        assert_eq!(gen_hash.first().unwrap(), &res_hash);
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_fetch_blocks_for_invalid_checkpoint() {
     let _ = env_logger::try_init();
     let delay = Duration::from_millis(5000);
 
@@ -278,29 +231,190 @@ async fn should_return_block_hash_for_height() {
 
     let mempool = docker.run(client.mempool_backend);
 
-    let concurrency = 4;
-    let base_url = url::Url::parse(
-        format!(
-            "http://{}:{}/api/v1",
-            HOST_IP,
-            mempool.get_host_port_ipv4(8999)
-        )
-        .as_str(),
-    )
-    .unwrap();
+    let http_client = HttpClient::new(
+        build_base_url(mempool.get_host_port_ipv4(8999)).as_str(),
+        DEFAULT_CONCURRENT_REQUESTS,
+    );
 
-    // generate `block_num==5` new blocks through bitcoind rpc-client
+    let checkpoint = (0, BlockHash::default());
+    let blocks = block_events::fetch_blocks(http_client, checkpoint).await;
+
+    // should produce an error for invalid checkpoint
+    assert!(blocks.is_err());
+
+    // should produce an error indicating checkpoint as invalid
+    assert_eq!(
+        blocks.err().unwrap().to_string(),
+        "The checkpoint passed is invalid, it should exist in the blockchain."
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_fetch_blocks_for_checkpoint() {
+    let _ = env_logger::try_init();
+    let delay = Duration::from_millis(5000);
+
+    let docker = clients::Cli::docker();
+    let client = MempoolTestClient::default();
+
+    let _mariadb = docker.run(client.mariadb_database);
+    std::thread::sleep(delay); // there is some delay between running the docker and the port being really available
+    let mempool = docker.run(client.mempool_backend);
+
     let rpc_client = &client.bitcoind.client;
-    let http_client = HttpClient::new(&base_url, concurrency);
+    let http_client = HttpClient::new(
+        build_base_url(mempool.get_host_port_ipv4(8999)).as_str(),
+        DEFAULT_CONCURRENT_REQUESTS,
+    );
 
-    // should return an error if there is no block created yet for given height
-    assert!(http_client._get_block_height(100).await.is_err());
-    for i in 1..10 {
-        let gen_hash = rpc_client
-            .generate_to_address(1, &rpc_client.get_new_address(None, None).unwrap())
-            .unwrap();
+    // generate new 20 blocks
+    let mut gen_blocks = rpc_client
+        .generate_to_address(20, &rpc_client.get_new_address(None, None).unwrap())
+        .unwrap();
 
-        let res_hash = http_client._get_block_height(i).await.unwrap();
-        assert_eq!(gen_hash.first().unwrap(), &res_hash);
+    let checkpoint = (10, *gen_blocks.get(9).unwrap());
+    let blocks = block_events::fetch_blocks(http_client, checkpoint)
+        .await
+        .unwrap();
+
+    pin_mut!(blocks);
+    // should return all 10 blocks from 10 to 20, as 10 being the checkpoint
+    for gen_block in &mut gen_blocks[9..] {
+        let block = blocks.next().await.unwrap();
+        assert_eq!(gen_block.deref(), &block.id);
     }
 }
+
+#[tokio::test]
+async fn test_failure_for_invalid_websocket_url() {
+    let block_events = websocket::subscribe_to_blocks(build_base_url(8999).as_str()).await;
+
+    // should return an Err.
+    assert!(block_events.is_err());
+
+    // should return connection Err.
+    assert_eq!(
+        block_events.err().unwrap().to_string(),
+        "IO error: Connection refused (os error 61)"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_block_events_stream() {
+    let _ = env_logger::try_init();
+    let delay = Duration::from_millis(5000);
+
+    let docker = clients::Cli::docker();
+    let client = MempoolTestClient::default();
+
+    let _mariadb = docker.run(client.mariadb_database);
+
+    std::thread::sleep(delay); // there is some delay between running the docker and the port being really available
+    let mempool = docker.run(client.mempool_backend);
+
+    // get block-events stream
+    let block_events = block_events::subscribe_to_blocks(
+        build_base_url(mempool.get_host_port_ipv4(mempool.get_host_port_ipv4(8999))).as_str(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    // initiate bitcoind client
+    let rpc_client = &client.bitcoind.client;
+
+    // generate 5 new blocks through bitcoind rpc-client
+    let mut generated_blocks = VecDeque::from(
+        rpc_client
+            .generate_to_address(5, &rpc_client.get_new_address(None, None).unwrap())
+            .unwrap(),
+    );
+
+    // consume new blocks from block-events stream
+    pin_mut!(block_events);
+    while !generated_blocks.is_empty() {
+        let block_hash = generated_blocks.pop_front().unwrap();
+        let block_event = block_events.next().await.unwrap();
+
+        // should produce a BlockEvent::Connected result for each block event
+        assert!(matches!(block_event, BlockEvent::Connected { .. }));
+
+        // should parse the BlockEvent::Connected successfully
+        let connected_block = match block_event {
+            BlockEvent::Connected(block) => block,
+            _ => unreachable!("This test is supposed to have only connected blocks, please check why it's generating disconnected and/or errors at the moment."),
+        };
+
+        assert_eq!(block_hash.to_owned(), connected_block.block_hash());
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_block_events_stream_with_checkpoint() {
+    let _ = env_logger::try_init();
+    let delay = Duration::from_millis(5000);
+
+    let docker = clients::Cli::docker();
+    let client = MempoolTestClient::default();
+
+    // initiate bitcoind client
+    let rpc_client = &client.bitcoind.client;
+
+    // generate first 5 new blocks through bitcoind rpc-client
+    let first_blocks = rpc_client
+        .generate_to_address(10, &rpc_client.get_new_address(None, None).unwrap())
+        .unwrap();
+
+    // checkpoint starts from 3rd block (index 2)
+    let mut first_blocks = VecDeque::from(first_blocks[2..].to_vec());
+    let checkpoint = rpc_client.get_block(first_blocks.front().unwrap()).unwrap();
+
+    let _mariadb = docker.run(client.mariadb_database);
+
+    std::thread::sleep(delay); // there is some delay between running the docker and the port being really available
+    let mempool = docker.run(client.mempool_backend);
+
+    // get block-events stream, starting from the tip
+    let block_events = block_events::subscribe_to_blocks(
+        build_base_url(mempool.get_host_port_ipv4(mempool.get_host_port_ipv4(8999))).as_str(),
+        Some((3, checkpoint.block_hash())),
+    )
+    .await
+    .unwrap();
+
+    // std::thread::sleep(delay);
+    // // generate 5 new blocks through bitcoind rpc-client
+    // let mut generated_blocks = VecDeque::from(
+    //     rpc_client
+    //         .generate_to_address(3, &rpc_client.get_new_address(None, None).unwrap())
+    //         .unwrap(),
+    // );
+
+    // insert the first blocks starting from checkpoint
+    // first_blocks.append(&mut generated_blocks);
+
+    // consume new blocks from block-events stream
+    pin_mut!(block_events);
+    while !first_blocks.is_empty() {
+        let block_hash = first_blocks.pop_front().unwrap();
+        let block_event = block_events.next().await.unwrap();
+
+        // should produce a BlockEvent::Connected result for each block event
+        assert!(matches!(block_event, BlockEvent::Connected { .. }));
+
+        // should parse the BlockEvent::Connected successfully
+        let connected_block = match block_event {
+            BlockEvent::Connected(block) => block,
+            _ => unreachable!("This test is supposed to have only connected blocks, please check why it's generating disconnected and/or errors at the moment."),
+        };
+
+        assert_eq!(block_hash.to_owned(), connected_block.block_hash());
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_block_events_stream_with_reorg() {}

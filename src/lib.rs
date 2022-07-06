@@ -46,7 +46,6 @@ use bitcoin::{BlockHash, BlockHeader};
 use futures_util::stream::Stream;
 use tokio::time::Instant;
 use tokio_stream::StreamExt;
-use url::Url;
 
 const DEFAULT_CONCURRENT_REQUESTS: u8 = 4;
 
@@ -132,18 +131,18 @@ impl BlockHeadersCache {
 
 /// Subscribe to a real-time stream of [`BlockEvent`], for all new blocks or starting from an optional checkpoint
 pub async fn subscribe_to_blocks(
-    base_url: &Url,
-    checkpoint: Option<(u32, BlockHash)>,
+    base_url: &str,
+    checkpoint: Option<(u64, BlockHash)>,
 ) -> anyhow::Result<Pin<Box<dyn Stream<Item = BlockEvent>>>> {
     let http_client = http::HttpClient::new(base_url, DEFAULT_CONCURRENT_REQUESTS);
     let cache = BlockHeadersCache {
         tip: http_client
-            ._get_block_height(http_client._get_height().await.unwrap())
-            .await
-            .unwrap(),
+            ._get_block_height(http_client._get_height().await?)
+            .await?,
         active_headers: HashMap::new(),
         stale_headers: HashMap::new(),
     };
+    log::debug!("[BlockHeadersCache] {:?}", cache);
 
     match checkpoint {
         Some(checkpoint) => {
@@ -207,7 +206,7 @@ async fn process_candidates(
 // FIXME: this fails when checkpoint is genesis block as it does not have a previousblockhash field
 pub async fn fetch_blocks(
     http_client: HttpClient,
-    checkpoint: (u32, BlockHash),
+    checkpoint: (u64, BlockHash),
 ) -> anyhow::Result<impl Stream<Item = BlockExtended>> {
     let (ckpt_height, ckpt_hash) = checkpoint;
 
@@ -220,6 +219,9 @@ pub async fn fetch_blocks(
     let mut tip = http_client._get_height().await?;
     let mut height = ckpt_height;
 
+    log::debug!("tip: {}", tip);
+    log::debug!("ckpt: {:?}", checkpoint);
+
     let mut interval = Instant::now(); // it should try to update the tip every 5 minutes.
     let stream = stream! {
         while height <= tip {
@@ -227,6 +229,8 @@ pub async fn fetch_blocks(
             let block = http_client._get_block(hash).await.unwrap();
 
             height += 1;
+            log::debug!("height: {}", height);
+            log::debug!("block: {:?}", block);
 
             if interval.elapsed() >= Duration::from_secs(300) {
                 interval = Instant::now();
