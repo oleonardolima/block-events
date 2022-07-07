@@ -185,6 +185,7 @@ pub async fn subscribe_to_blocks(
     };
 
     let cache = BlockHeadersCache {
+        //TODO: rename to _get_block_hash
         tip: http_client._get_block_height(current_tip).await?,
         active_headers: HashMap::new(),
         stale_headers: HashMap::new(),
@@ -221,18 +222,19 @@ async fn process_candidates(
 ) -> anyhow::Result<impl Stream<Item = BlockEvent>> {
     let stream = stream! {
         while let Some(candidate) = candidates.next().await {
+
             // TODO: (@leonardo.lima) It should check and validate for valid BlockHeaders
 
             // validate if the [`BlockHeader`] candidate is a valid new tip
             // yields a [`BlockEvent::Connected()`] variant and continue the iteration
             if cache.validate_new_header(candidate) {
-                yield BlockEvent::Connected(BlockHeader::from(candidate.clone()));
+                yield Ok(BlockEvent::Connected(BlockHeader::from(candidate.clone())));
                 continue
             }
 
             // find common ancestor for current active chain and the forked chain
             // fetches forked chain candidates and store in cache
-            let (common_ancestor, fork_chain) = cache.find_or_fetch_common_ancestor(http_client.clone(), candidate).await.unwrap();
+            let (common_ancestor, fork_chain) = exponential_backoff(|| cache.find_or_fetch_common_ancestor(http_client.clone(), candidate).await ).await;
 
             // rollback current active chain, moving blocks to staled field
             // yields BlockEvent::Disconnected((u32, BlockHash))
@@ -286,5 +288,7 @@ pub async fn fetch_blocks(
             yield block;
         }
     };
+
+    // TODO: after check that tip hasn't changed -- if it has
     Ok(stream)
 }

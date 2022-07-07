@@ -51,10 +51,26 @@ async fn websocket_client(
     Ok(websocket_stream)
 }
 
+
+pub(crate) async fn exponentional_backoff<O, E, F>(f: impl FnMut() -> F, t: u32) -> O
+    where F: Future<Item = Result<O, E>
+{
+    // problem is that we want to emit it into the stream when we fail here
+    match f().await {
+        Ok(output) => output,
+        Err(e) => {
+            t = 2 * t;
+            tokio::time::timer(Duration::from_secs(t)).await.unwrap();
+            exponentional_backoff(f, t)
+        }
+    }
+}
+
 /// Connects to mempool.space WebSocket client and listen to new messages producing a stream of [`BlockExtended`] candidates
+// TODO: subscribe to block headers
 pub async fn subscribe_to_blocks(
     base_url: &str,
-) -> anyhow::Result<impl Stream<Item = BlockExtended>> {
+) -> anyhow::Result<impl TryStream<Item = BlockExtended>> {
     let init_message = serde_json::to_string(&build_websocket_request_message(
         &MempoolSpaceWebSocketRequestData::Blocks,
     ))
@@ -70,6 +86,8 @@ pub async fn subscribe_to_blocks(
             tokio::select! {
                 message = ws_stream.next() => {
                     if let Some(message) = message {
+                        // TODO: don't unwrap this.
+                        // We can either try reconnect or yield and error (or both?)
                         match message.unwrap() {
                             Message::Text(text) => {
                                 let parse_ws_msg = || -> anyhow::Result<()> {
@@ -79,8 +97,9 @@ pub async fn subscribe_to_blocks(
                                 if let Err(_) = parse_ws_msg() {
                                     continue
                                 }
+                                // TODO: continue if serde error
                                 let res_msg: MempoolSpaceWebSocketMessage = serde_json::from_str(&text).unwrap();
-                                yield res_msg.block;
+                                yield Ok(res_msg.block);
                             },
                             Message::Close(_) => {
                                 eprintln!("websocket closing gracefully");
@@ -92,16 +111,32 @@ pub async fn subscribe_to_blocks(
                             },
                             _ => { /*ignore*/ }
                         }
+                        else {
+                            for thing in exponentional_backoff(|| websocket_client(base_url, init_message).await) {
+                                match thing {
+                                    Ok(new_ws_stream) => ws_stream = new_ws_stream,
+                                    Err(e) => yield Err(e)
+                                }
+                            }
+                        }
                     }
                 }
                 _ = pinger.tick() => {
                     log::info!("pinging to websocket to keep connection alive");
+                    // TODO: ignore error here?
                     ws_stream.send(Message::Ping(vec![])).await.unwrap() // TODO: (@leonardo.lima) Should this use a mempool expected ping message instead ?
                 }
             }
         }
     };
     Ok(stream)
+}
+
+pub fn subscribe_to_blocks() -> impl Stream<Item = Block> {
+   todo!();
+    // use subscribe_to_block_headers and for each item in the stream yield a full block
+    // using GET /api/block/:hash/raw
+    //
 }
 
 fn build_websocket_request_message(
